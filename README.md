@@ -9,6 +9,9 @@ PLAN:
 
 
 status as of 3/19, 12pm
+
+
+
 TESTED:
 - switches (connect shift register to C, NC to GND) - need to solder
 - shift registers (follow instructions in code to daisy chain - battleship_test.ino)
