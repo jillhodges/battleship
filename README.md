@@ -1,11 +1,7 @@
-MAKE SEPARATE FILES FIRST
- - beam break: Coordinate_Test_Code.ino 
- - LED: LED_initial_test.ino
- - defender board: NEED FILE
- - LCD (also need to buy): NEED FILE
- - bluetooth controller
-
-TO PUT TOGETHER
-master: ESP32
-slaves: arduinos
-
+PLAN:
+- thursday 3/18: run initial tests, debug individual codes
+- BY monday 3/23: all initial code works
+- tuesday 3/24: debug inital pulling together of code, all other parts ordered (LCDs, logic level converter, wires, resistors, etc)
+- wednesday 3/25: continue working on debugging
+- thursday 3/26: main code running
+- 
