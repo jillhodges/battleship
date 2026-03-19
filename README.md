@@ -8,7 +8,7 @@ PLAN:
 - 
 
 
-status as of 3/19, 12pm
+status as of 3/19, 4pm
 
 
 
@@ -17,10 +17,10 @@ TESTED:
 - shift registers (follow instructions in code to daisy chain - battleship_test.ino)
 - LEDs
 - beam breaks (no shift registers yet)
+- PS4 controller connected to ESP32
 
 TO BE TESTED:
 - Servos on ESP32
-- PS4 controller connected to ESP32
 - ESP32 and Mega Comms
 - LCDs
 
