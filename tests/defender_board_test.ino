@@ -127,14 +127,7 @@ void loop() {
   uint32_t rawData = readShiftRegisters();
   updateGrid(rawData);
   printGrid();
-
-  // -------------------------------------------------------
-  // Example: react to a specific cell being occupied
-  // -------------------------------------------------------
-  if (grid[1][1]) {
-    // Center cell is occupied — do something
-    // e.g. digitalWrite(LED_PIN, HIGH);
-  }
+}
 
   // -------------------------------------------------------
   // Example: scan all occupied cells
