@@ -6,6 +6,6 @@ MAKE SEPARATE FILES FIRST
  - bluetooth controller
 
 TO PUT TOGETHER
-master: ESP32
-slaves: arduinos
+- master: ESP32
+- slaves: arduinos
 
