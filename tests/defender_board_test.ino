@@ -139,9 +139,9 @@ void loop() {
   // -------------------------------------------------------
   // Example: scan all occupied cells
   // -------------------------------------------------------
-  /*
-  for (int r = 0; r < ROWS; r++) {
-    for (int c = 0; c < COLS; c++) {
+
+for (int r = 0; r < ROWS; r++) {
+  for (int c = 0; c < COLS; c++) {
       if (grid[r][c]) {
         Serial.print("Occupied: row=");
         Serial.print(r);
