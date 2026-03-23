@@ -8,7 +8,7 @@ PLAN:
 - 
 
 
-status as of 3/19, 4pm
+status as of 3/23, 12pm
 
 
 
@@ -18,13 +18,12 @@ TESTED:
 - LEDs
 - beam breaks (no shift registers yet)
 - PS4 controller connected to ESP32
+- PS4 controller + Servos + ESP32
 
-TO BE TESTED:
-- Servos on ESP32
+TO BE TESTED
 - ESP32 and Mega Comms
 - LCDs
 
 TO BE ORDERED:
-- logic level shifter
-- wires for soldering
-- LCDs
+- logic level shifter (maybe)
+- wires for soldering (borrowing from Neetu for now)
