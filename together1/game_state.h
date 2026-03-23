@@ -15,7 +15,7 @@
 
 #define GRID_ROWS       4
 #define GRID_COLS       4
-#define NUM_SHIPS       3       // Ships per player
+#define NUM_SHIPS       4       // Ships per player: 3-cell, 2-cell, 2-cell, 1-cell
 #define NUM_BEAM_H      4       // Horizontal beam break sensors
 #define NUM_BEAM_V      4       // Vertical beam break sensors
 #define NUM_PLAYERS     2
@@ -24,9 +24,10 @@
 // SHIP DEFINITIONS
 // ============================================================
 
-// Ship sizes in order of placement (ship 0, ship 1, ship 2)
-const int SHIP_SIZES[NUM_SHIPS] = {2, 2, 1};
-const char* SHIP_NAMES[NUM_SHIPS] = {"Ship 1", "Ship 2", "Ship 3"};
+// IMPORTANT: static prevents "multiple definition" linker errors
+// when this header is included by multiple .cpp files
+static const int   SHIP_SIZES[NUM_SHIPS] = {3, 2, 2, 1};
+static const char* SHIP_NAMES[NUM_SHIPS] = {"Cruiser", "Destroyer", "Submarine", "Scout"};
 
 // ============================================================
 // TIMING
@@ -34,7 +35,7 @@ const char* SHIP_NAMES[NUM_SHIPS] = {"Ship 1", "Ship 2", "Ship 3"};
 
 #define TURN_HARD_CAP_MS      30000   // 30 second hard cap per turn
 #define FIRE_WINDOW_MS         3000   // 3 seconds after aiming stops
-#define JOYSTICK_DEADZONE        15   // Axis deadzone (0–255 range from UART)
+#define JOYSTICK_DEADZONE        15   // Axis deadzone (0-255 range from UART)
 #define LCD_MESSAGE_DURATION   2000   // How long hit/miss message shows (ms)
 
 // ============================================================
@@ -107,17 +108,20 @@ enum GamePhase {
 // ============================================================
 
 struct Ship {
-  int  cells[3][2];   // Up to 3 cells, each is {row, col}
-  int  size;          // Number of cells
-  int  hits;          // How many cells have been hit
-  bool sunk;          // Whether fully sunk
+  int  cells[3][2];   // Max 3 cells — matches largest ship (Cruiser, size 3)
+                      // Each cell is {row, col}
+  int  size;          // Number of cells this ship occupies
+  int  hits;          // How many cells have been hit so far
+  bool sunk;          // True when hits >= size
 
+  // Returns true if this ship occupies cell (r, c)
   bool isHit(int r, int c) {
     for (int i = 0; i < size; i++)
       if (cells[i][0] == r && cells[i][1] == c) return true;
     return false;
   }
 
+  // Register a hit on cell (r, c) — sets sunk if fully destroyed
   void registerHit(int r, int c) {
     for (int i = 0; i < size; i++) {
       if (cells[i][0] == r && cells[i][1] == c) {
@@ -135,10 +139,10 @@ struct Ship {
 
 struct Player {
   Ship  ships[NUM_SHIPS];
-  bool  switchGrid[GRID_ROWS][GRID_COLS];   // Raw switch state
-  bool  hitGrid[GRID_ROWS][GRID_COLS];      // Cells that have been shot
-  int   shipsPlaced;                         // How many ships placed so far
-  bool  ready;                               // Confirmed ready to play
+  bool  switchGrid[GRID_ROWS][GRID_COLS];   // Raw switch state from shift registers
+  bool  hitGrid[GRID_ROWS][GRID_COLS];      // Cells that have been shot at
+  int   shipsPlaced;                         // How many ships confirmed so far
+  bool  ready;                               // Player confirmed ready to play
   int   shipsRemaining;                      // Ships not yet sunk
 
   void init() {
@@ -158,7 +162,7 @@ struct Player {
       }
     shipsPlaced    = 0;
     ready          = false;
-    shipsRemaining = NUM_SHIPS;
+    shipsRemaining = NUM_SHIPS;   // 4 ships per player
   }
 };
 
@@ -170,17 +174,20 @@ struct ControllerState {
   bool connected;
   int  lx;          // -511 to +511
   int  ly;
+
+  // Current button states
   bool cross, circle, square, triangle;
   bool l1, r1, l2, r2;
 
-  // Edge detection — true only on the frame the button was first pressed
+  // Edge detection — true only on the single frame a button is first pressed
   bool crossPressed, circlePressed, squarePressed, trianglePressed;
   bool l1Pressed, r1Pressed;
 
-  // Previous button states for edge detection
+  // Previous button states (used internally for edge detection)
   bool _prevCross, _prevCircle, _prevSquare, _prevTriangle;
   bool _prevL1, _prevR1;
 
+  // Call once per loop AFTER receiving new data from ESP32
   void updateEdges() {
     crossPressed    = cross    && !_prevCross;
     circlePressed   = circle   && !_prevCircle;
@@ -197,6 +204,7 @@ struct ControllerState {
     _prevR1       = r1;
   }
 
+  // Returns true if joystick is outside deadzone (player is actively aiming)
   bool isAiming() {
     return abs(lx) > JOYSTICK_DEADZONE || abs(ly) > JOYSTICK_DEADZONE;
   }
@@ -217,16 +225,16 @@ enum ShotResult {
 // GLOBAL GAME STATE (defined in battleship_mega.ino)
 // ============================================================
 
-extern GamePhase      gamePhase;
-extern Player         players[NUM_PLAYERS];
+extern GamePhase       gamePhase;
+extern Player          players[NUM_PLAYERS];
 extern ControllerState ctrl[NUM_PLAYERS];
-extern int            currentPlayer;        // 0 or 1 — whose turn it is
-extern unsigned long  turnStartTime;        // When current turn began
-extern unsigned long  aimStopTime;          // When player stopped aiming
-extern bool           playerStoppedAiming;  // Flag for fire window
-extern ShotResult     lastShotResult;
-extern int            lastShotRow;
-extern int            lastShotCol;
-extern int            lastShotShipIndex;    // Which ship was hit (-1 if miss)
+extern int             currentPlayer;        // 0 or 1 — whose turn it is
+extern unsigned long   turnStartTime;        // When current turn began
+extern unsigned long   aimStopTime;          // When player stopped aiming
+extern bool            playerStoppedAiming;  // Flag for fire window
+extern ShotResult      lastShotResult;
+extern int             lastShotRow;
+extern int             lastShotCol;
+extern int             lastShotShipIndex;    // Which ship was hit (-1 if miss)
 
 #endif
