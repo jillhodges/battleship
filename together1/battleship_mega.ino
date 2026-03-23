@@ -22,6 +22,12 @@
  *   Player 2 LCD: I2C address 0x26
  *   4x NeoPixel strips on pins 22, 23, 24, 25
  *   Shift registers: see P1_GRID_*, P2_GRID_*, BEAM_* pin defines
+ *
+ * SHIPS PER PLAYER:
+ *   Ship 0 — Cruiser    (3 cells)
+ *   Ship 1 — Destroyer  (2 cells)
+ *   Ship 2 — Submarine  (2 cells)
+ *   Ship 3 — Scout      (1 cell)
  */
 
 #include "game_state.h"
@@ -36,17 +42,17 @@
 // (declared extern in game_state.h, defined here)
 // ============================================================
 
-GamePhase       gamePhase         = PHASE_SETUP;
+GamePhase       gamePhase           = PHASE_SETUP;
 Player          players[NUM_PLAYERS];
 ControllerState ctrl[NUM_PLAYERS];
-int             currentPlayer     = 0;
-unsigned long   turnStartTime     = 0;
-unsigned long   aimStopTime       = 0;
+int             currentPlayer       = 0;
+unsigned long   turnStartTime       = 0;
+unsigned long   aimStopTime         = 0;
 bool            playerStoppedAiming = false;
-ShotResult      lastShotResult    = RESULT_NONE;
-int             lastShotRow       = -1;
-int             lastShotCol       = -1;
-int             lastShotShipIndex = -1;
+ShotResult      lastShotResult      = RESULT_NONE;
+int             lastShotRow         = -1;
+int             lastShotCol         = -1;
+int             lastShotShipIndex   = -1;
 
 // ============================================================
 // UART — RECEIVE FROM ESP32
@@ -70,7 +76,7 @@ void receiveFromESP32() {
 
   uint8_t connected = buf[1];
   ctrl[0].connected = connected & 0x01;
-  ctrl[1].connected = connected & 0x02;
+  ctrl[1].connected = (connected & 0x02) != 0;
 
   // Map 0-255 back to -511 to +511
   ctrl[0].lx = map(buf[2], 0, 255, -511, 511);
@@ -89,9 +95,7 @@ void receiveFromESP32() {
     ctrl[c].r1       = b & 0x20;
     ctrl[c].l2       = b & 0x40;
     ctrl[c].r2       = b & 0x80;
-
-    // Update edge detection
-    ctrl[c].updateEdges();
+    // Note: updateEdges() is called separately in loop() after receive
   }
 }
 
@@ -100,11 +104,10 @@ void receiveFromESP32() {
 // ============================================================
 
 void sendToESP32() {
-  // Read both grids and beam breaks into raw bytes
   uint16_t grid1 = 0, grid2 = 0;
   uint8_t  beams = 0;
 
-  // Re-read grids for transmission
+  // Re-encode grids from player state for transmission
   for (int r = 0; r < GRID_ROWS; r++)
     for (int c = 0; c < GRID_COLS; c++) {
       if (players[0].switchGrid[r][c]) grid1 |= (1 << (15 - (r * GRID_COLS + c)));
@@ -153,19 +156,31 @@ void setup() {
   displayInit();
   ledsInit();
 
-  // Initialise controller state
+  // Initialise players
+  for (int p = 0; p < NUM_PLAYERS; p++) {
+    players[p].init();
+  }
+
+  // Initialise controller state — zero everything including prev states
   for (int c = 0; c < NUM_PLAYERS; c++) {
-    ctrl[c] = {false, 0, 0,
-               false, false, false, false,
-               false, false, false, false,
-               false, false, false, false,
-               false, false,
-               false, false, false, false,
-               false, false};
+    ctrl[c].connected      = false;
+    ctrl[c].lx = ctrl[c].ly = 0;
+    ctrl[c].cross = ctrl[c].circle = ctrl[c].square = ctrl[c].triangle = false;
+    ctrl[c].l1 = ctrl[c].r1 = ctrl[c].l2 = ctrl[c].r2 = false;
+    ctrl[c].crossPressed = ctrl[c].circlePressed = false;
+    ctrl[c].squarePressed = ctrl[c].trianglePressed = false;
+    ctrl[c].l1Pressed = ctrl[c].r1Pressed = false;
+    ctrl[c]._prevCross = ctrl[c]._prevCircle = false;
+    ctrl[c]._prevSquare = ctrl[c]._prevTriangle = false;
+    ctrl[c]._prevL1 = ctrl[c]._prevR1 = false;
   }
 
   setupPhaseInit();
   Serial.println("Battleship Mega ready.");
+  Serial.printf("Ships per player: %d\n", NUM_SHIPS);
+  for (int i = 0; i < NUM_SHIPS; i++) {
+    Serial.printf("  Ship %d: %s (%d cells)\n", i, SHIP_NAMES[i], SHIP_SIZES[i]);
+  }
 }
 
 // ============================================================
@@ -173,13 +188,18 @@ void setup() {
 // ============================================================
 
 unsigned long lastSendTime = 0;
-const unsigned long SEND_INTERVAL = 20;
+const unsigned long SEND_INTERVAL = 20;  // Send to ESP32 at ~50Hz
 
 void loop() {
-  // Always receive from ESP32
+  // 1. Receive latest controller state from ESP32
   receiveFromESP32();
 
-  // Send to ESP32 at ~50Hz
+  // 2. Update edge detection IMMEDIATELY after receive
+  //    This must happen before any phase update reads crossPressed etc.
+  ctrl[0].updateEdges();
+  ctrl[1].updateEdges();
+
+  // 3. Send sensor state to ESP32 at ~50Hz
   if (millis() - lastSendTime >= SEND_INTERVAL) {
     lastSendTime = millis();
     updatePlayerGrid(0);
@@ -187,7 +207,7 @@ void loop() {
     sendToESP32();
   }
 
-  // Run current game phase
+  // 4. Run current game phase
   switch (gamePhase) {
     case PHASE_SETUP:
       setupPhaseUpdate();
@@ -198,8 +218,8 @@ void loop() {
       break;
 
     case PHASE_GAME_OVER:
-      // Sit on the end screen — reset requires power cycle or button
-      // (add a reset button mapped to a controller button here if desired)
+      // Sit on end screen — power cycle to reset
+      // To add a reset: check for a button press here and call setup()
       break;
 
     default:
