@@ -1,16 +1,13 @@
 PLAN:
 - thursday 3/18: run initial tests, debug individual codes
 - need to solder onto switches in order to test
-- BY monday 3/23: all initial code works
+- end of monday 3/23: all initial code works
 - tuesday 3/24: debug inital pulling together of code, all other parts ordered (LCDs, logic level converter, wires, resistors, etc)
 - wednesday 3/25: continue working on debugging
 - thursday 3/26: main code running
 - 
 
-
 status as of 3/23, 12pm
-
-
 
 TESTED:
 - switches (connect shift register to C, NC to GND) - need to solder
