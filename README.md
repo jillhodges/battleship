@@ -1,8 +1,7 @@
 PLAN:
 - thursday 3/18: run initial tests, debug individual codes
-- need to solder onto switches in order to test
-- end of monday 3/23: all initial code works
-- tuesday 3/24: debug inital pulling together of code, all other parts ordered (LCDs, logic level converter, wires, resistors, etc)
+- need to solder onto switches in order to test!!!!!!! <------ need to know wire lengths ASAP
+- end of tuesday 3/24: all initial code works
 - wednesday 3/25: continue working on debugging
 - thursday 3/26: main code running
 - 
