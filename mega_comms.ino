@@ -71,15 +71,14 @@ bool grid[ROWS][COLS];
 bool beamBroken[NUM_SENSORS];
 
 // ----- Received controller state -----
-struct ControllerState {
+struct ControllerData {
   bool connected;
   int  lx;          // -511 to +511
   int  ly;
   bool cross, circle, square, triangle;
   bool l1, r1, l2, r2;
 };
-ControllerState ctrl[2];
-
+ControllerData ctrl;
 // ----- Timing -----
 unsigned long lastSendTime = 0;
 const unsigned long SEND_INTERVAL = 20;  // ms — send at ~50Hz max
@@ -154,7 +153,6 @@ void sendPacket(uint16_t gridRaw, uint8_t beamRaw) {
 // ============================================================
 
 void receivePacket() {
-  void receivePacket() {
   if (SERIAL_ESP.available() < 6) return;
 
   // Debug — print what the first byte is
@@ -206,6 +204,7 @@ void receivePacket() {
   ctrl.r1        = b & 0x20;
 }
 }
+}
 
 // ============================================================
 // SETUP & LOOP
@@ -227,6 +226,10 @@ void setup() {
 }
 
 void loop() {
+  if(SERIAL_ESP.available()>0){
+    Serial.print("Byte Received: 0x");
+    Serial.println(SERIAL_ESP.read(), HEX);
+  }
   // --- Always try to receive from ESP32 ---
   receivePacket();
 
@@ -241,20 +244,20 @@ void loop() {
     updateBeams(beamRaw);
     sendPacket(gridRaw, beamRaw);
 
-    // --- Debug output ---
-Serial.println("--- Mega State ---");
-for (int r = 0; r < ROWS; r++) {
-  for (int c = 0; c < COLS; c++)
-    Serial.print(grid[r][c] ? "[X]" : "[ ]");
-  Serial.println();
-}
+        // --- Debug output ---
+// Serial.println("--- Mega State ---");
+// for (int r = 0; r < ROWS; r++) {
+//   for (int c = 0; c < COLS; c++)
+//     Serial.print(grid[r][c] ? "[X]" : "[ ]");
+//   Serial.println();
+// }
 
-for (int i = 0; i < NUM_SENSORS; i++) {
-  Serial.print("Beam ");
-  Serial.print(i);
-  Serial.print(": ");
-  Serial.println(beamBroken[i] ? "BROKEN" : "clear");
-}
+// for (int i = 0; i < NUM_SENSORS; i++) {
+//   Serial.print("Beam ");
+//   Serial.print(i);
+//   Serial.print(": ");
+//   Serial.println(beamBroken[i] ? "BROKEN" : "clear");
+// }
 
 for (int c = 0; c < 2; c++) {
   if (ctrl[c].connected) {
