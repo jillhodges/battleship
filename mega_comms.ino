@@ -238,23 +238,33 @@ void loop() {
     sendPacket(gridRaw, beamRaw);
 
     // --- Debug output ---
-    Serial.println("--- Mega State ---");
-    for (int r = 0; r < ROWS; r++) {
-      for (int c = 0; c < COLS; c++)
-        Serial.print(grid[r][c] ? "[X]" : "[ ]");
-      Serial.println();
-    }
-    for (int i = 0; i < NUM_SENSORS; i++)
-      Serial.printf("Beam %d: %s\n", i, beamBroken[i] ? "BROKEN" : "clear");
+Serial.println("--- Mega State ---");
+for (int r = 0; r < ROWS; r++) {
+  for (int c = 0; c < COLS; c++)
+    Serial.print(grid[r][c] ? "[X]" : "[ ]");
+  Serial.println();
+}
 
-    for (int c = 0; c < 2; c++) {
-      if (ctrl[c].connected) {
-        Serial.printf("Ctrl %d: LX=%d LY=%d | Cross=%d Circle=%d L1=%d R1=%d\n",
-          c+1, ctrl[c].lx, ctrl[c].ly,
-          ctrl[c].cross, ctrl[c].circle, ctrl[c].l1, ctrl[c].r1);
-      }
-    }
-    Serial.println();
+for (int i = 0; i < NUM_SENSORS; i++) {
+  Serial.print("Beam ");
+  Serial.print(i);
+  Serial.print(": ");
+  Serial.println(beamBroken[i] ? "BROKEN" : "clear");
+}
+
+for (int c = 0; c < 2; c++) {
+  if (ctrl[c].connected) {
+    Serial.print("Ctrl ");
+    Serial.print(c + 1);
+    Serial.print(": LX="); Serial.print(ctrl[c].lx);
+    Serial.print(" LY="); Serial.print(ctrl[c].ly);
+    Serial.print(" | Cross="); Serial.print(ctrl[c].cross);
+    Serial.print(" Circle="); Serial.print(ctrl[c].circle);
+    Serial.print(" L1="); Serial.print(ctrl[c].l1);
+    Serial.print(" R1="); Serial.println(ctrl[c].r1);
+  }
+}
+Serial.println();
   }
 
   // Your LED strip, LCD, and game logic code goes here —
