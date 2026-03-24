@@ -123,7 +123,7 @@ uint8_t readBeamShiftRegister() {
 void updateGrid(uint16_t raw) {
   for (int r = 0; r < ROWS; r++)
     for (int c = 0; c < COLS; c++)
-      grid[r][c] = (raw >> (15 - (r * COLS + c))) & 0x01;
+      grid[r][c] = (raw >> (14 - (r * COLS + c))) & 0x01;
 }
 
 void updateBeams(uint8_t raw) {
