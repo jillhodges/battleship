@@ -154,53 +154,57 @@ void sendPacket(uint16_t gridRaw, uint8_t beamRaw) {
 // ============================================================
 
 void receivePacket() {
-  // Need at least 10 bytes for a full packet
-  if (SERIAL_ESP.available() < 10) return;
+  void receivePacket() {
+  if (SERIAL_ESP.available() < 6) return;
 
-  // Hunt for start byte
+  // Debug — print what the first byte is
+  Serial.print("First byte: 0x");
+  Serial.println(SERIAL_ESP.peek(), HEX);
+
   if (SERIAL_ESP.peek() != START_BYTE) {
-    SERIAL_ESP.read();  // Discard and try next byte
+    Serial.println("Not start byte, discarding.");
+    SERIAL_ESP.read();
     return;
   }
 
-  // Read full packet
-  uint8_t buf[10];
-  SERIAL_ESP.readBytes(buf, 10);
+  uint8_t buf[6];
+  SERIAL_ESP.readBytes(buf, 6);
 
-  // Validate start and end bytes
-  if (buf[0] != START_BYTE || buf[9] != END_BYTE) return;
+  // Debug — print full packet
+  Serial.print("Packet: ");
+  for (int i = 0; i < 6; i++) {
+    Serial.print("0x");
+    Serial.print(buf[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
 
-  // Validate checksum (XOR of bytes 1–7)
-  uint8_t checksum = 0;
-  for (int i = 1; i <= 7; i++) checksum ^= buf[i];
-  if (checksum != buf[8]) {
-    Serial.println("WARNING: Bad checksum on received packet, discarding.");
+  if (buf[0] != START_BYTE || buf[5] != END_BYTE) {
+    Serial.println("Bad start/end bytes.");
     return;
   }
 
-  // Parse controller connection bitmask
-  uint8_t connected = buf[1];
-  ctrl[0].connected = connected & 0x01;
-  ctrl[1].connected = connected & 0x02;
-
-  // Parse axes — convert 0–255 back to -511 to +511
-  ctrl[0].lx = map(buf[2], 0, 255, -511, 511);
-  ctrl[0].ly = map(buf[3], 0, 255, -511, 511);
-  ctrl[1].lx = map(buf[4], 0, 255, -511, 511);
-  ctrl[1].ly = map(buf[5], 0, 255, -511, 511);
-
-  // Parse button bitmasks
-  for (int c = 0; c < 2; c++) {
-    uint8_t b = buf[6 + c];
-    ctrl[c].cross    = b & 0x01;
-    ctrl[c].circle   = b & 0x02;
-    ctrl[c].square   = b & 0x04;
-    ctrl[c].triangle = b & 0x08;
-    ctrl[c].l1       = b & 0x10;
-    ctrl[c].r1       = b & 0x20;
-    ctrl[c].l2       = b & 0x40;
-    ctrl[c].r2       = b & 0x80;
+  uint8_t checksum = buf[1] ^ buf[2] ^ buf[3];
+  if (checksum != buf[4]) {
+    Serial.print("Bad checksum. Got: 0x");
+    Serial.print(buf[4], HEX);
+    Serial.print(" Expected: 0x");
+    Serial.println(checksum, HEX);
+    return;
   }
+
+  ctrl.connected = true;
+  ctrl.lx        = map(buf[1], 0, 255, -511, 511);
+  ctrl.ly        = map(buf[2], 0, 255, -511, 511);
+
+  uint8_t b      = buf[3];
+  ctrl.cross     = b & 0x01;
+  ctrl.circle    = b & 0x02;
+  ctrl.square    = b & 0x04;
+  ctrl.triangle  = b & 0x08;
+  ctrl.l1        = b & 0x10;
+  ctrl.r1        = b & 0x20;
+}
 }
 
 // ============================================================
