@@ -149,16 +149,16 @@ void receivePacket() {
   }
 
   ctrl.connected = buf[1] & 0x01;
-  ctrl.lx        = map(buf[2], 0, 255, -511, 511);
-  ctrl.ly        = map(buf[3], 0, 255, -511, 511);
+ctrl.lx        = map(buf[2], 0, 255, -511, 511);
+ctrl.ly        = map(buf[3], 0, 255, -511, 511);
 
-  uint8_t b     = buf[4];
-  ctrl.cross    = b & 0x01;
-  ctrl.circle   = b & 0x02;
-  ctrl.square   = b & 0x04;
-  ctrl.triangle = b & 0x08;
-  ctrl.l1       = b & 0x10;
-  ctrl.r1       = b & 0x20;
+uint8_t b     = buf[6];   // changed from buf[4] to buf[6]
+ctrl.cross    = b & 0x01;
+ctrl.circle   = b & 0x02;
+ctrl.square   = b & 0x04;
+ctrl.triangle = b & 0x08;
+ctrl.l1       = b & 0x10;
+ctrl.r1       = b & 0x20;
 }
 // ============================================================
 // SETUP & LOOP
