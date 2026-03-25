@@ -203,16 +203,18 @@ void loop() {
     }
 
     // --- Controller debug ---
-    if (ctrl.connected) {
-      Serial.print("Ctrl: LX="); Serial.print(ctrl.lx);
-      Serial.print(" LY=");      Serial.print(ctrl.ly);
-      Serial.print(" | Cross="); Serial.print(ctrl.cross);
-      Serial.print(" Circle=");  Serial.print(ctrl.circle);
-      Serial.print(" L1=");      Serial.print(ctrl.l1);
-      Serial.print(" R1=");      Serial.println(ctrl.r1);
-    } else {
-      Serial.println("Ctrl: not connected");
-    }
+   if (ctrl.connected) {
+  Serial.print("Ctrl: LX="); Serial.print(ctrl.lx);
+  Serial.print(" LY=");      Serial.print(ctrl.ly);
+  Serial.print(" | Cross=");    Serial.print(ctrl.cross);
+  Serial.print(" Circle=");     Serial.print(ctrl.circle);
+  Serial.print(" Square=");     Serial.print(ctrl.square);
+  Serial.print(" Triangle=");   Serial.print(ctrl.triangle);
+  Serial.print(" L1=");         Serial.print(ctrl.l1);
+  Serial.print(" R1=");         Serial.println(ctrl.r1);
+} else {
+  Serial.println("Ctrl: not connected");
+}
     Serial.println();
   }
 }
