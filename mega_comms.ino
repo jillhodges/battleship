@@ -123,15 +123,25 @@ void receivePacket() {
     return;
   }
 
+  // Wait until all 9 bytes are available
+  unsigned long start = millis();
+  while (SERIAL_ESP.available() < 9) {
+    if (millis() - start > 100) return;  // timeout after 100ms
+  }
+
   uint8_t buf[9];
-  SERIAL_ESP.readBytes(buf, 9);
+  for (int i = 0; i < 9; i++) {
+    buf[i] = SERIAL_ESP.read();
+  }
+
+  Serial.print("buf[0]=0x"); Serial.print(buf[0], HEX);
+  Serial.print(" buf[8]=0x"); Serial.println(buf[8], HEX);
 
   if (buf[0] != START_BYTE || buf[8] != END_BYTE) {
     Serial.println("Bad start/end bytes.");
     return;
   }
 
-  // Checksum covers bytes 1-6
   uint8_t checksum = 0;
   for (int i = 1; i <= 6; i++) checksum ^= buf[i];
   if (checksum != buf[7]) {
@@ -146,7 +156,7 @@ void receivePacket() {
   ctrl.lx        = map(buf[2], 0, 255, -511, 511);
   ctrl.ly        = map(buf[3], 0, 255, -511, 511);
 
-  uint8_t b  = buf[4];
+  uint8_t b     = buf[4];
   ctrl.cross    = b & 0x01;
   ctrl.circle   = b & 0x02;
   ctrl.square   = b & 0x04;
