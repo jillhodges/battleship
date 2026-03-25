@@ -116,13 +116,43 @@ void sendPacket(uint16_t gridRaw, uint8_t beamRaw) {
 
 
 void receivePacket() {
-  while (SERIAL_ESP.available() > 0) {
-    uint8_t incoming = SERIAL_ESP.read();
-    Serial.print("0x");
-    Serial.print(incoming, HEX);
-    Serial.print(" ");
+  if (SERIAL_ESP.available() < 9) return;
+
+  if (SERIAL_ESP.peek() != START_BYTE) {
+    SERIAL_ESP.read();
+    return;
   }
-  Serial.println();
+
+  uint8_t buf[9];
+  SERIAL_ESP.readBytes(buf, 9);
+
+  if (buf[0] != START_BYTE || buf[8] != END_BYTE) {
+    Serial.println("Bad start/end bytes.");
+    return;
+  }
+
+  // Checksum covers bytes 1-6
+  uint8_t checksum = 0;
+  for (int i = 1; i <= 6; i++) checksum ^= buf[i];
+  if (checksum != buf[7]) {
+    Serial.print("Bad checksum. Got: 0x");
+    Serial.print(buf[7], HEX);
+    Serial.print(" Expected: 0x");
+    Serial.println(checksum, HEX);
+    return;
+  }
+
+  ctrl.connected = buf[1] & 0x01;
+  ctrl.lx        = map(buf[2], 0, 255, -511, 511);
+  ctrl.ly        = map(buf[3], 0, 255, -511, 511);
+
+  uint8_t b  = buf[4];
+  ctrl.cross    = b & 0x01;
+  ctrl.circle   = b & 0x02;
+  ctrl.square   = b & 0x04;
+  ctrl.triangle = b & 0x08;
+  ctrl.l1       = b & 0x10;
+  ctrl.r1       = b & 0x20;
 }
 
 // ============================================================
