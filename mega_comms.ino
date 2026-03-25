@@ -116,37 +116,33 @@ void sendPacket(uint16_t gridRaw, uint8_t beamRaw) {
 
 
 void receivePacket() {
-  if (SERIAL_ESP.available() < 9) return;
+  if (SERIAL_ESP.available() < 10) return;
 
   if (SERIAL_ESP.peek() != START_BYTE) {
     SERIAL_ESP.read();
     return;
   }
 
-  // Wait until all 9 bytes are available
   unsigned long start = millis();
-  while (SERIAL_ESP.available() < 9) {
-    if (millis() - start > 100) return;  // timeout after 100ms
+  while (SERIAL_ESP.available() < 10) {
+    if (millis() - start > 100) return;
   }
 
-  uint8_t buf[9];
-  for (int i = 0; i < 9; i++) {
+  uint8_t buf[10];
+  for (int i = 0; i < 10; i++) {
     buf[i] = SERIAL_ESP.read();
   }
 
-  Serial.print("buf[0]=0x"); Serial.print(buf[0], HEX);
-  Serial.print(" buf[8]=0x"); Serial.println(buf[8], HEX);
-
-  if (buf[0] != START_BYTE || buf[8] != END_BYTE) {
+  if (buf[0] != START_BYTE || buf[9] != END_BYTE) {
     Serial.println("Bad start/end bytes.");
     return;
   }
 
   uint8_t checksum = 0;
-  for (int i = 1; i <= 6; i++) checksum ^= buf[i];
-  if (checksum != buf[7]) {
+  for (int i = 1; i <= 7; i++) checksum ^= buf[i];
+  if (checksum != buf[8]) {
     Serial.print("Bad checksum. Got: 0x");
-    Serial.print(buf[7], HEX);
+    Serial.print(buf[8], HEX);
     Serial.print(" Expected: 0x");
     Serial.println(checksum, HEX);
     return;
@@ -164,7 +160,6 @@ void receivePacket() {
   ctrl.l1       = b & 0x10;
   ctrl.r1       = b & 0x20;
 }
-
 // ============================================================
 // SETUP & LOOP
 // ============================================================
