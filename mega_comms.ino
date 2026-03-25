@@ -114,46 +114,15 @@ void sendPacket(uint16_t gridRaw, uint8_t beamRaw) {
 // RECEIVE PACKET FROM ESP32
 // ============================================================
 
+
 void receivePacket() {
-  if (SERIAL_ESP.available() < 6) return;
-
-  // Discard bytes until we find start byte
-  if (SERIAL_ESP.peek() != START_BYTE) {
-    SERIAL_ESP.read();
-    return;
+  while (SERIAL_ESP.available() > 0) {
+    uint8_t incoming = SERIAL_ESP.read();
+    Serial.print("0x");
+    Serial.print(incoming, HEX);
+    Serial.print(" ");
   }
-
-  uint8_t buf[6];
-  SERIAL_ESP.readBytes(buf, 6);
-
-  // Validate start and end bytes
-  if (buf[0] != START_BYTE || buf[5] != END_BYTE) {
-    Serial.println("Bad start/end bytes.");
-    return;
-  }
-
-  // Validate checksum
-  uint8_t checksum = buf[1] ^ buf[2] ^ buf[3];
-  if (checksum != buf[4]) {
-    Serial.print("Bad checksum. Got: 0x");
-    Serial.print(buf[4], HEX);
-    Serial.print(" Expected: 0x");
-    Serial.println(checksum, HEX);
-    return;
-  }
-
-  // Parse data into ctrl
-  ctrl.connected = true;
-  ctrl.lx        = map(buf[1], 0, 255, -511, 511);
-  ctrl.ly        = map(buf[2], 0, 255, -511, 511);
-
-  uint8_t b      = buf[3];
-  ctrl.cross     = b & 0x01;
-  ctrl.circle    = b & 0x02;
-  ctrl.square    = b & 0x04;
-  ctrl.triangle  = b & 0x08;
-  ctrl.l1        = b & 0x10;
-  ctrl.r1        = b & 0x20;
+  Serial.println();
 }
 
 // ============================================================
