@@ -1,9 +1,10 @@
 PLAN:
-- wednesday 3/25: ESP32 and Mega Comms work, LCDs tested
-- thursday 3/26: main code running
-- friday 3/27: begin making neat, hardware integration and wire routing
+- monday 3/30: test code for all together
+- tuesday 3/31: debug code for all together, hardware integration
+- wednesday 4/1: BAD day for EE lab timing
+- thursday 4/2: hopefully have code running properly, update game logic as needed
 
-status as of 3/24, 6pm
+status as of 3/29, 7am
 
 TESTED:
 - switches (connect shift register to C, NC to GND) - need to solder second group <--- waiting on mechanical switch placement to solder board, protoype still together
@@ -12,12 +13,9 @@ TESTED:
 - beam breaks (no shift registers yet)
 - PS4 controller connected to ESP32
 - PS4 controller + Servos + ESP32
+- ESP32 and Mega Comms
 
-IN PROGRESS:
-- ESP32 and Mega Comms (still not getting ps4 controller data from the esp32 to mega using RX/TX and voltage divider), voltage divider circuit still set up, will do more research tonight
 
 TO BE TESTED:
 - LCDs (need to update code, no longer i2c communication)
-
-TO BE ORDERED:
-- logic level shifter (maybe) <- still having problems with communication between ESP32 and MEGA
+- full code together
