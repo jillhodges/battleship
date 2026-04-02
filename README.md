@@ -1,7 +1,7 @@
 PLAN:
 - thursday 4/2: hopefully have code running properly, update game logic as needed
 
-status as of 4/1, 3pm
+status as of 4/2, 11am
 
 TESTED:
 - switches (connect shift register to C, NC to GND) - need to solder second group <--- (mechanical switch placement determined, can start soldering board?)
@@ -11,7 +11,7 @@ TESTED:
 - PS4 controller connected to ESP32
 - PS4 controller + Servos + ESP32
 - ESP32 and Mega Comms
-
-TO BE TESTED:
 - LCDs (code updated, just need to run)
-- full code together
+
+TO BE TESTED: 
+- full code together (waiting to have mechanical set for half of board)
