@@ -1,37 +1,51 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <SPI.h>
-// use p23 for SDA, p18 for SCL (not actually i2C, mislabeled,, actually MOSI and SCLK)
+
 #define TFT_CS   14
 #define TFT_RST  15
 #define TFT_DC   32
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
-#define GRID_ROWS 4
-#define GRID_COLS 4
-#define CELL_SIZE 20
-#define GRID_X 20
-#define GRID_Y 30
+#define GRID_ROWS  4
+#define GRID_COLS  4
+#define CELL_SIZE  18
+#define GRID_X     20
+#define GRID_Y     45
 
-// 0 = empty, 1 = hit, 2 = miss
 uint8_t grid[GRID_ROWS][GRID_COLS];
+
+int hits       = 0;
+int misses     = 0;
+unsigned long startTime   = 0;
+unsigned long elapsedTime = 0;
+bool gameActive = false;
+bool gameOver   = false;
+
+#define TOTAL_SHIPS 4  // one per row for simplicity, adjust as needed
 
 void setup() {
   Serial.begin(9600);
   tft.initR(INITR_BLACKTAB);
-  tft.setRotation(1); // landscape
+  tft.setRotation(1);
   tft.fillScreen(ST77XX_BLACK);
 
   clearGrid();
-  drawGrid();
+  drawAll();
   printInstructions();
-
-  Serial.println("Battleship Ready!");
-  Serial.println("Commands: H A3 (hit) or M B2 (miss). C to clear.");
 }
 
 void loop() {
+  // Update timer every second while game is active
+  if (gameActive && !gameOver) {
+    unsigned long newElapsed = (millis() - startTime) / 1000;
+    if (newElapsed != elapsedTime) {
+      elapsedTime = newElapsed;
+      drawTimer();
+    }
+  }
+
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim();
@@ -40,24 +54,45 @@ void loop() {
   }
 }
 
+// ─── Input Handler ────────────────────────────────────────────────────────────
+
 void handleInput(String input) {
-  if (input == "C") {
-    clearGrid();
-    drawGrid();
-    printInstructions();
-    Serial.println("Board cleared.");
+
+  // Start game
+  if (input == "S") {
+    if (gameActive) {
+      Serial.println("Game already running. Use C to reset.");
+      return;
+    }
+    startGame();
     return;
   }
 
-  // Expect format: H B3 or M A2
+  // Clear / reset
+  if (input == "C") {
+    resetGame();
+    return;
+  }
+
+  if (!gameActive) {
+    Serial.println("Send S to start the game first.");
+    return;
+  }
+
+  if (gameOver) {
+    Serial.println("Game over! Send C to reset.");
+    return;
+  }
+
+  // Expect H A3 or M B2
   if (input.length() < 4) {
     Serial.println("Invalid. Use: H B3 or M A2");
     return;
   }
 
-  char type = input.charAt(0);   // H or M
-  char col  = input.charAt(2);   // A-D
-  String rowStr = input.substring(3); // 1-4
+  char type    = input.charAt(0);
+  char col     = input.charAt(2);
+  String rowStr = input.substring(3);
 
   if (type != 'H' && type != 'M') {
     Serial.println("Start with H (hit) or M (miss)");
@@ -79,50 +114,161 @@ void handleInput(String input) {
 
   if (type == 'H') {
     grid[rowIndex][colIndex] = 1;
+    hits++;
     drawCell(rowIndex, colIndex, 1);
-    Serial.print("HIT marked at ");
+    Serial.print("HIT at ");
+    Serial.print(col);
+    Serial.println(rowStr);
   } else {
     grid[rowIndex][colIndex] = 2;
+    misses++;
     drawCell(rowIndex, colIndex, 2);
-    Serial.print("MISS marked at ");
+    Serial.print("MISS at ");
+    Serial.print(col);
+    Serial.println(rowStr);
   }
 
-  Serial.print(col);
-  Serial.println(rowStr);
+  drawScore();
+
+  // Check win condition
+  if (hits >= TOTAL_SHIPS) {
+    endGame();
+  }
 }
 
-void clearGrid() {
-  memset(grid, 0, sizeof(grid));
+// ─── Game State ───────────────────────────────────────────────────────────────
+
+void startGame() {
+  gameActive  = true;
+  gameOver    = false;
+  hits        = 0;
+  misses      = 0;
+  startTime   = millis();
+  elapsedTime = 0;
+  clearGrid();
+  drawAll();
+  Serial.println("Game started! Good luck.");
 }
 
-void drawGrid() {
+void resetGame() {
+  gameActive  = false;
+  gameOver    = false;
+  hits        = 0;
+  misses      = 0;
+  elapsedTime = 0;
+  clearGrid();
+  drawAll();
+  Serial.println("Board reset. Send S to start.");
+}
+
+void endGame() {
+  gameActive = false;
+  gameOver   = true;
+
+  // Flash win message over grid area
+  tft.fillRect(0, 40, 160, 90, ST77XX_BLACK);
+  tft.setTextColor(ST77XX_YELLOW);
+  tft.setTextSize(2);
+  tft.setCursor(20, 55);
+  tft.print("YOU WIN!");
+
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(15, 80);
+  tft.print("Time: ");
+  tft.print(elapsedTime);
+  tft.print("s  Misses: ");
+  tft.print(misses);
+
+  tft.setCursor(22, 95);
+  tft.setTextColor(ST77XX_CYAN);
+  tft.print("Send C to play again");
+
+  Serial.println("=== YOU WIN! ===");
+  Serial.print("Time: ");
+  Serial.print(elapsedTime);
+  Serial.println(" seconds");
+  Serial.print("Hits: ");
+  Serial.print(hits);
+  Serial.print("  Misses: ");
+  Serial.println(misses);
+  Serial.println("Send C to reset.");
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────────
+
+void drawAll() {
   tft.fillScreen(ST77XX_BLACK);
+  drawHeader();
+  drawScore();
+  drawTimer();
+  drawGridLabels();
+  for (int r = 0; r < GRID_ROWS; r++)
+    for (int c = 0; c < GRID_COLS; c++)
+      drawCell(r, c, grid[r][c]);
+}
 
-  // Title
+void drawHeader() {
   tft.setTextColor(ST77XX_CYAN);
   tft.setTextSize(1);
-  tft.setCursor(50, 4);
+  tft.setCursor(45, 2);
   tft.print("BATTLESHIP");
+}
 
+void drawScore() {
+  // Clear score area
+  tft.fillRect(0, 12, 160, 14, ST77XX_BLACK);
+
+  tft.setTextSize(1);
+
+  tft.setTextColor(ST77XX_GREEN);
+  tft.setCursor(5, 14);
+  tft.print("HITS:");
+  tft.print(hits);
+
+  tft.setTextColor(ST77XX_RED);
+  tft.setCursor(65, 14);
+  tft.print("MISS:");
+  tft.print(misses);
+}
+
+void drawTimer() {
+  // Clear timer area
+  tft.fillRect(0, 27, 160, 12, ST77XX_BLACK);
+
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_YELLOW);
+  tft.setCursor(5, 28);
+  tft.print("TIME: ");
+
+  if (!gameActive && !gameOver) {
+    tft.print("--");
+  } else {
+    unsigned long t = elapsedTime;
+    unsigned long mins = t / 60;
+    unsigned long secs = t % 60;
+    if (mins < 10) tft.print("0");
+    tft.print(mins);
+    tft.print(":");
+    if (secs < 10) tft.print("0");
+    tft.print(secs);
+  }
+}
+
+void drawGridLabels() {
   // Column labels A-D
   for (int c = 0; c < GRID_COLS; c++) {
     tft.setTextColor(ST77XX_WHITE);
-    tft.setCursor(GRID_X + c * CELL_SIZE + 6, GRID_Y - 12);
+    tft.setTextSize(1);
+    tft.setCursor(GRID_X + c * CELL_SIZE + 5, GRID_Y - 10);
     tft.print((char)('A' + c));
   }
-
   // Row labels 1-4
   for (int r = 0; r < GRID_ROWS; r++) {
     tft.setTextColor(ST77XX_WHITE);
-    tft.setCursor(GRID_X - 12, GRID_Y + r * CELL_SIZE + 6);
+    tft.setTextSize(1);
+    tft.setCursor(GRID_X - 12, GRID_Y + r * CELL_SIZE + 5);
     tft.print(r + 1);
-  }
-
-  // Draw empty cells
-  for (int r = 0; r < GRID_ROWS; r++) {
-    for (int c = 0; c < GRID_COLS; c++) {
-      drawCell(r, c, 0);
-    }
   }
 }
 
@@ -138,19 +284,25 @@ void drawCell(int row, int col, uint8_t state) {
   tft.fillRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2, bgColor);
 
   if (state == 1) {
-    // X for hit
     tft.drawLine(x+3, y+3, x+CELL_SIZE-4, y+CELL_SIZE-4, ST77XX_WHITE);
     tft.drawLine(x+CELL_SIZE-4, y+3, x+3, y+CELL_SIZE-4, ST77XX_WHITE);
   } else if (state == 2) {
-    // Dot for miss
-    tft.fillCircle(x + CELL_SIZE/2, y + CELL_SIZE/2, 4, ST77XX_WHITE);
+    tft.fillCircle(x + CELL_SIZE/2, y + CELL_SIZE/2, 3, ST77XX_WHITE);
   }
 }
 
+void clearGrid() {
+  memset(grid, 0, sizeof(grid));
+}
+
+// ─── Serial Instructions ──────────────────────────────────────────────────────
+
 void printInstructions() {
-  Serial.println("--- BATTLESHIP ---");
+  Serial.println("=== BATTLESHIP ===");
+  Serial.println("S            = Start game");
   Serial.println("H [col][row] = Hit  (e.g. H A3)");
   Serial.println("M [col][row] = Miss (e.g. M B2)");
-  Serial.println("C            = Clear board");
+  Serial.println("C            = Clear/reset board");
   Serial.println("Cols: A-D  Rows: 1-4");
+  Serial.println("Send S to begin!");
 }
