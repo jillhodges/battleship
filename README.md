@@ -1,6 +1,6 @@
 PLAN:
-- thursday 4/2: hopefully have code running properly, update game logic as needed
-
+- game logic fully completed after easter weekend
+- wiring diagram
 status as of 4/2, 11am
 
 TESTED:
@@ -11,7 +11,7 @@ TESTED:
 - PS4 controller connected to ESP32
 - PS4 controller + Servos + ESP32
 - ESP32 and Mega Comms
-- LCDs (code updated, just need to run)
+- LCDs (see code for wiring information)
 
 TO BE TESTED: 
 - full code together (waiting to have mechanical set for half of board)
