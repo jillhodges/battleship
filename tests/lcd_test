@@ -1,0 +1,156 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7735.h>
+#include <SPI.h>
+// use p23 for SDA, p18 for SCL (not actually i2C, mislabeled,, actually MOSI and SCLK)
+#define TFT_CS   14
+#define TFT_RST  15
+#define TFT_DC   32
+
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+
+#define GRID_ROWS 4
+#define GRID_COLS 4
+#define CELL_SIZE 20
+#define GRID_X 20
+#define GRID_Y 30
+
+// 0 = empty, 1 = hit, 2 = miss
+uint8_t grid[GRID_ROWS][GRID_COLS];
+
+void setup() {
+  Serial.begin(9600);
+  tft.initR(INITR_BLACKTAB);
+  tft.setRotation(1); // landscape
+  tft.fillScreen(ST77XX_BLACK);
+
+  clearGrid();
+  drawGrid();
+  printInstructions();
+
+  Serial.println("Battleship Ready!");
+  Serial.println("Commands: H A3 (hit) or M B2 (miss). C to clear.");
+}
+
+void loop() {
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    input.toUpperCase();
+    handleInput(input);
+  }
+}
+
+void handleInput(String input) {
+  if (input == "C") {
+    clearGrid();
+    drawGrid();
+    printInstructions();
+    Serial.println("Board cleared.");
+    return;
+  }
+
+  // Expect format: H B3 or M A2
+  if (input.length() < 4) {
+    Serial.println("Invalid. Use: H B3 or M A2");
+    return;
+  }
+
+  char type = input.charAt(0);   // H or M
+  char col  = input.charAt(2);   // A-D
+  String rowStr = input.substring(3); // 1-4
+
+  if (type != 'H' && type != 'M') {
+    Serial.println("Start with H (hit) or M (miss)");
+    return;
+  }
+
+  int colIndex = col - 'A';
+  int rowIndex = rowStr.toInt() - 1;
+
+  if (colIndex < 0 || colIndex >= GRID_COLS || rowIndex < 0 || rowIndex >= GRID_ROWS) {
+    Serial.println("Out of range. Cols A-D, Rows 1-4");
+    return;
+  }
+
+  if (grid[rowIndex][colIndex] != 0) {
+    Serial.println("Cell already marked!");
+    return;
+  }
+
+  if (type == 'H') {
+    grid[rowIndex][colIndex] = 1;
+    drawCell(rowIndex, colIndex, 1);
+    Serial.print("HIT marked at ");
+  } else {
+    grid[rowIndex][colIndex] = 2;
+    drawCell(rowIndex, colIndex, 2);
+    Serial.print("MISS marked at ");
+  }
+
+  Serial.print(col);
+  Serial.println(rowStr);
+}
+
+void clearGrid() {
+  memset(grid, 0, sizeof(grid));
+}
+
+void drawGrid() {
+  tft.fillScreen(ST77XX_BLACK);
+
+  // Title
+  tft.setTextColor(ST77XX_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(50, 4);
+  tft.print("BATTLESHIP");
+
+  // Column labels A-D
+  for (int c = 0; c < GRID_COLS; c++) {
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setCursor(GRID_X + c * CELL_SIZE + 6, GRID_Y - 12);
+    tft.print((char)('A' + c));
+  }
+
+  // Row labels 1-4
+  for (int r = 0; r < GRID_ROWS; r++) {
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setCursor(GRID_X - 12, GRID_Y + r * CELL_SIZE + 6);
+    tft.print(r + 1);
+  }
+
+  // Draw empty cells
+  for (int r = 0; r < GRID_ROWS; r++) {
+    for (int c = 0; c < GRID_COLS; c++) {
+      drawCell(r, c, 0);
+    }
+  }
+}
+
+void drawCell(int row, int col, uint8_t state) {
+  int x = GRID_X + col * CELL_SIZE;
+  int y = GRID_Y + row * CELL_SIZE;
+
+  uint16_t bgColor;
+  if (state == 1)      bgColor = ST77XX_RED;
+  else if (state == 2) bgColor = ST77XX_BLUE;
+  else                 bgColor = 0x1082;
+
+  tft.fillRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2, bgColor);
+
+  if (state == 1) {
+    // X for hit
+    tft.drawLine(x+3, y+3, x+CELL_SIZE-4, y+CELL_SIZE-4, ST77XX_WHITE);
+    tft.drawLine(x+CELL_SIZE-4, y+3, x+3, y+CELL_SIZE-4, ST77XX_WHITE);
+  } else if (state == 2) {
+    // Dot for miss
+    tft.fillCircle(x + CELL_SIZE/2, y + CELL_SIZE/2, 4, ST77XX_WHITE);
+  }
+}
+
+void printInstructions() {
+  Serial.println("--- BATTLESHIP ---");
+  Serial.println("H [col][row] = Hit  (e.g. H A3)");
+  Serial.println("M [col][row] = Miss (e.g. M B2)");
+  Serial.println("C            = Clear board");
+  Serial.println("Cols: A-D  Rows: 1-4");
+}
