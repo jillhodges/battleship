@@ -14,7 +14,7 @@ void loop() {
   for(int i = 0; i < NUMPIXELS; i++) {
     // Check the position within a group of 10
     // If the remainder of (i / 10) is less than 5, it's a Red LED
-    if ((i % 10) < 5) {
+    if ((i<7||i>14) {
       pixels.setPixelColor(i, pixels.Color(255, 0, 0)); // Red
     } 
     // Otherwise, it's a Blue LED
