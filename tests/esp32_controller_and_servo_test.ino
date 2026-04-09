@@ -42,7 +42,7 @@
 #include <ESP32Servo.h>
 
 // ----- Servo pins -----
-#define SERVO1_PIN  13    // Controller 1, left stick X
+#define SERVO1_PIN  19    // Controller 1, left stick X
 #define SERVO2_PIN  14    // Controller 1, left stick Y
 #define SERVO3_PIN  25    // Controller 2, left stick X
 #define SERVO4_PIN  26    // Controller 2, left stick Y
