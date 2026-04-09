@@ -1,7 +1,7 @@
 PLAN:
 - game logic fully completed after easter weekend
 - wiring diagram
-status as of 4/2, 11am
+status as of 4/9, 12pm
 
 TESTED:
 - switches (connect shift register to C, NC to GND) - need to solder second group <--- (mechanical switch placement determined, can start soldering board?)
@@ -15,3 +15,6 @@ TESTED:
 
 TO BE TESTED: 
 - full code together (waiting to have mechanical set for half of board)
+
+TO DO:
+- get mechanical assembly working
