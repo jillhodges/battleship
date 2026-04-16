@@ -1,0 +1,75 @@
+// Microswitch 4x4 grid detection for Arduino Mega
+// 16 switches, each wired to its own digital pin
+// Includes debouncing to eliminate noise
+
+// --- Pin Mapping ---
+// Arranged as SWITCH_PINS[row][col], edit to match your wiring
+const int SWITCH_PINS[4][4] = {
+  {22, 23, 24, 25},  // Row 1: cols 1-4
+  {26, 27, 28, 29},  // Row 2: cols 1-4
+  {30, 31, 32, 33},  // Row 3: cols 1-4
+  {34, 35, 36, 37}   // Row 4: cols 1-4
+};
+
+const unsigned long DEBOUNCE_DELAY = 50; // ms — increase if still noisy
+
+// --- Debounce State ---
+bool lastRawState[4][4];       // Raw reading last loop
+bool stableState[4][4];        // Confirmed debounced state
+bool reportedState[4][4];      // Last state we printed, to avoid repeat messages
+unsigned long lastChangeTime[4][4]; // When the raw state last changed
+
+void setup() {
+  Serial.begin(9600);
+
+  for (int r = 0; r < 4; r++) {
+    for (int c = 0; c < 4; c++) {
+      pinMode(SWITCH_PINS[r][c], INPUT_PULLUP);
+
+      // Switches are LOW when pressed (pull-up), so idle = HIGH = not pressed
+      lastRawState[r][c]   = HIGH;
+      stableState[r][c]    = HIGH;
+      reportedState[r][c]  = HIGH;
+      lastChangeTime[r][c] = 0;
+    }
+  }
+
+  Serial.println("4x4 microswitch grid ready.");
+}
+
+void loop() {
+  unsigned long currentTime = millis();
+
+  for (int r = 0; r < 4; r++) {
+    for (int c = 0; c < 4; c++) {
+      bool rawReading = digitalRead(SWITCH_PINS[r][c]);
+
+      // If the raw reading changed, reset the debounce timer
+      if (rawReading != lastRawState[r][c]) {
+        lastChangeTime[r][c] = currentTime;
+        lastRawState[r][c]   = rawReading;
+      }
+
+      // Only accept the new state if it has been stable for DEBOUNCE_DELAY
+      if ((currentTime - lastChangeTime[r][c]) >= DEBOUNCE_DELAY) {
+        stableState[r][c] = rawReading;
+      }
+
+      // Report only on changes to the stable state
+      if (stableState[r][c] != reportedState[r][c]) {
+        reportedState[r][c] = stableState[r][c];
+
+        Serial.print("Row ");
+        Serial.print(r + 1);
+        Serial.print(", Col ");
+        Serial.print(c + 1);
+
+        if (stableState[r][c] == LOW) {
+          Serial.println(" -> PRESSED");
+        } else {
+          Serial.println(" -> RELEASED");
+        }
+      }
+    }
+  }
+}
