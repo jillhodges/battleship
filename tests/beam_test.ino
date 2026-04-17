@@ -28,22 +28,18 @@ void loop() {
     //if (digitalRead(COL_PINS[i]) == LOW) lastColBreak[i] = currentTime;
     if (digitalRead(ROW_PINS[i]) == LOW) {
         lastRowBreak[i] = currentTime;
-      if (i<h){
-        h = i;
+
+
       }
       for (int j = 0; j <4; j++){
         if (digitalRead(COL_PINS[j]) == LOW) {
           lastColBreak[j] = currentTime;
-          Serial.print("ROW, COL: ");
-          Serial.print(h);
-          Serial.print(", ");
-          Serial.println(j);
+ 
         }
 
       }
 
     }
-  }
 
   // Check every row/column combination for a coincident break
   for (int r = 0; r < 4; r++) {
