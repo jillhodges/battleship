@@ -1,0 +1,413 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7735.h>
+#include <SPI.h>
+#include <PS4Controller.h>
+
+// ─── Pin Definitions ──────────────────────────────────────────────────────────
+#define TFT_CS   14
+#define TFT_RST  15
+#define TFT_DC   32
+
+// UART from Mega: connect Mega TX1 to ESP32 RX2 (pin 16), share GND
+#define MEGA_RX 16
+#define MEGA_TX 17  // not used for receiving but defined for Serial2
+
+// ─── Display ──────────────────────────────────────────────────────────────────
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+
+// ─── Game Config ─────────────────────────────────────────────────────────────
+#define GAME_TIME_SECONDS  600  // 10 minutes
+#define MAX_HITS           10   // hits needed to win
+
+// ─── Game State ───────────────────────────────────────────────────────────────
+enum GameState { MENU, WAITING_PLAYERS, PLAYING, SHOW_RESULT, GAME_OVER };
+GameState gameState = MENU;
+
+int  currentPlayer  = 1;  // 1 or 2
+int  p1Hits         = 0;
+int  p2Hits         = 0;
+long timeRemaining  = GAME_TIME_SECONDS;
+unsigned long lastTimerTick = 0;
+unsigned long resultShowTime = 0;
+bool resultShowing  = false;
+bool lastResult     = false; // true=hit, false=miss
+
+// PS4 controller connection tracking
+bool p1Connected = false;
+bool p2Connected = false;
+
+// Button debounce
+bool lastCrossP1 = false;
+bool lastCrossP2 = false;
+
+// ─── MAC Addresses of your two PS4 controllers ────────────────────────────────
+// Run the PS4-esp32 example sketch to find your controller MACs
+// then fill them in here:
+const char* P1_MAC = "00:00:00:00:00:00"; // Player 1 controller MAC
+const char* P2_MAC = "00:00:00:00:00:00"; // Player 2 controller MAC
+
+// ─── Colors ───────────────────────────────────────────────────────────────────
+#define COLOR_BG       ST77XX_BLACK
+#define COLOR_HIT      ST77XX_RED
+#define COLOR_MISS     ST77XX_BLUE
+#define COLOR_P1       ST77XX_CYAN
+#define COLOR_P2       ST77XX_MAGENTA
+#define COLOR_WHITE    ST77XX_WHITE
+#define COLOR_YELLOW   ST77XX_YELLOW
+#define COLOR_GREEN    ST77XX_GREEN
+
+void setup() {
+  Serial.begin(115200);
+
+  // UART from Mega
+  Serial2.begin(9600, SERIAL_8N1, MEGA_RX, MEGA_TX);
+
+  // Display
+  tft.initR(INITR_BLACKTAB);
+  tft.setRotation(1);
+  tft.fillScreen(COLOR_BG);
+
+  // PS4 Bluetooth
+  // If using a single controller at a time you can use PS4.begin()
+  // For two controllers simultaneously you need two ESP32s or a hub.
+  // This code handles one active controller and uses Cross to start/navigate.
+  PS4.begin();
+  Serial.println("Waiting for PS4 controller...");
+
+  drawMenu();
+}
+
+void loop() {
+  handleSerial();
+  handlePS4();
+
+  if (gameState == PLAYING) {
+    updateTimer();
+  }
+
+  if (resultShowing && millis() - resultShowTime > 1500) {
+    resultShowing = false;
+    drawHUD();
+  }
+}
+
+// ─── Serial from Mega ─────────────────────────────────────────────────────────
+void handleSerial() {
+  if (Serial2.available()) {
+    String msg = Serial2.readStringUntil('\n');
+    msg.trim();
+    msg.toUpperCase();
+
+    if (gameState != PLAYING) return;
+
+    if (msg == "HIT") {
+      registerResult(true);
+    } else if (msg == "MISS") {
+      registerResult(false);
+    }
+  }
+}
+
+// ─── PS4 Controller ───────────────────────────────────────────────────────────
+void handlePS4() {
+  if (!PS4.isConnected()) {
+    p1Connected = false;
+    return;
+  }
+  p1Connected = true;
+
+  bool crossNow = PS4.Cross();
+
+  // Cross button pressed (rising edge)
+  if (crossNow && !lastCrossP1) {
+    if (gameState == MENU) {
+      gameState = WAITING_PLAYERS;
+      drawWaitingScreen();
+    } else if (gameState == WAITING_PLAYERS) {
+      startGame();
+    } else if (gameState == GAME_OVER) {
+      resetGame();
+    }
+  }
+
+  lastCrossP1 = crossNow;
+
+  // Options button = go back to menu from anywhere
+  if (PS4.Options()) {
+    resetGame();
+  }
+}
+
+// ─── Game Logic ───────────────────────────────────────────────────────────────
+void registerResult(bool isHit) {
+  lastResult    = isHit;
+  resultShowing = true;
+  resultShowTime = millis();
+
+  if (isHit) {
+    if (currentPlayer == 1) p1Hits++;
+    else                    p2Hits++;
+    showHitGraphic();
+  } else {
+    showMissGraphic();
+  }
+
+  // Check win by hits
+  if (p1Hits >= MAX_HITS || p2Hits >= MAX_HITS) {
+    endGame(p1Hits >= MAX_HITS ? 1 : 2, false);
+    return;
+  }
+
+  // Switch player after result
+  currentPlayer = (currentPlayer == 1) ? 2 : 1;
+}
+
+void startGame() {
+  gameState      = PLAYING;
+  p1Hits         = 0;
+  p2Hits         = 0;
+  currentPlayer  = 1;
+  timeRemaining  = GAME_TIME_SECONDS;
+  lastTimerTick  = millis();
+  resultShowing  = false;
+  drawHUD();
+}
+
+void resetGame() {
+  gameState     = MENU;
+  p1Hits        = 0;
+  p2Hits        = 0;
+  currentPlayer = 1;
+  timeRemaining = GAME_TIME_SECONDS;
+  drawMenu();
+}
+
+void endGame(int winner, bool timeUp) {
+  gameState = GAME_OVER;
+  tft.fillScreen(COLOR_BG);
+
+  tft.setTextSize(2);
+  tft.setTextColor(COLOR_YELLOW);
+  tft.setCursor(30, 10);
+  tft.print("GAME OVER!");
+
+  if (timeUp) {
+    tft.setTextSize(1);
+    tft.setTextColor(COLOR_WHITE);
+    tft.setCursor(30, 35);
+    tft.print("TIME'S UP!");
+    // winner by most hits
+    winner = (p1Hits >= p2Hits) ? 1 : 2;
+  }
+
+  // Winner banner
+  tft.setTextSize(2);
+  uint16_t wColor = (winner == 1) ? COLOR_P1 : COLOR_P2;
+  tft.setTextColor(wColor);
+  tft.setCursor(15, 55);
+  tft.print("P");
+  tft.print(winner);
+  tft.print(" WINS!");
+
+  // Final scores
+  tft.setTextSize(1);
+  tft.setTextColor(COLOR_P1);
+  tft.setCursor(10, 85);
+  tft.print("P1 Hits: ");
+  tft.print(p1Hits);
+
+  tft.setTextColor(COLOR_P2);
+  tft.setCursor(90, 85);
+  tft.print("P2 Hits: ");
+  tft.print(p2Hits);
+
+  tft.setTextColor(COLOR_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(20, 105);
+  tft.print("Cross to play again");
+}
+
+// ─── Timer ────────────────────────────────────────────────────────────────────
+void updateTimer() {
+  if (millis() - lastTimerTick >= 1000) {
+    lastTimerTick = millis();
+    timeRemaining--;
+    if (!resultShowing) drawTimerArea();
+    if (timeRemaining <= 0) {
+      timeRemaining = 0;
+      endGame(0, true);
+    }
+  }
+}
+
+// ─── Graphics ─────────────────────────────────────────────────────────────────
+void drawMenu() {
+  tft.fillScreen(COLOR_BG);
+
+  // Title
+  tft.setTextColor(COLOR_YELLOW);
+  tft.setTextSize(2);
+  tft.setCursor(18, 15);
+  tft.print("BATTLESHIP");
+
+  // Divider
+  tft.drawFastHLine(0, 38, 160, COLOR_WHITE);
+
+  tft.setTextColor(COLOR_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(25, 50);
+  tft.print("Press  CROSS  to");
+  tft.setCursor(35, 65);
+  tft.print("start the game");
+
+  // Controller icon hint
+  tft.setTextColor(COLOR_GREEN);
+  tft.setCursor(50, 90);
+  tft.print("[ PS4 ]");
+
+  tft.setTextColor(0x7BEF); // gray
+  tft.setCursor(10, 110);
+  tft.print("Waiting for controller");
+}
+
+void drawWaitingScreen() {
+  tft.fillScreen(COLOR_BG);
+  tft.setTextColor(COLOR_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(20, 30);
+  tft.print("Both players ready?");
+  tft.setTextColor(COLOR_WHITE);
+  tft.setCursor(10, 55);
+  tft.print("Press CROSS to begin!");
+  tft.setTextColor(COLOR_YELLOW);
+  tft.setCursor(30, 80);
+  tft.print("10:00 on the clock");
+}
+
+void drawHUD() {
+  tft.fillScreen(COLOR_BG);
+
+  // Top bar - scores
+  drawScoreBar();
+
+  // Timer
+  drawTimerArea();
+
+  // Whose turn
+  drawPlayerTurn();
+}
+
+void drawScoreBar() {
+  // P1 score
+  tft.fillRect(0, 0, 78, 18, 0x1082);
+  tft.setTextColor(COLOR_P1);
+  tft.setTextSize(1);
+  tft.setCursor(3, 5);
+  tft.print("P1:");
+  tft.setTextColor(COLOR_WHITE);
+  tft.print(p1Hits);
+
+  // Divider
+  tft.drawFastVLine(79, 0, 18, COLOR_WHITE);
+
+  // P2 score
+  tft.fillRect(80, 0, 80, 18, 0x1082);
+  tft.setTextColor(COLOR_P2);
+  tft.setCursor(83, 5);
+  tft.print("P2:");
+  tft.setTextColor(COLOR_WHITE);
+  tft.print(p2Hits);
+}
+
+void drawTimerArea() {
+  tft.fillRect(0, 19, 160, 18, COLOR_BG);
+
+  long mins = timeRemaining / 60;
+  long secs = timeRemaining % 60;
+
+  // Color changes as time runs low
+  uint16_t tColor = COLOR_GREEN;
+  if (timeRemaining <= 60)  tColor = COLOR_HIT;
+  else if (timeRemaining <= 180) tColor = COLOR_YELLOW;
+
+  tft.setTextColor(tColor);
+  tft.setTextSize(1);
+  tft.setCursor(50, 23);
+  tft.print("TIME: ");
+  if (mins < 10) tft.print("0");
+  tft.print(mins);
+  tft.print(":");
+  if (secs < 10) tft.print("0");
+  tft.print(secs);
+}
+
+void drawPlayerTurn() {
+  tft.fillRect(0, 40, 160, 90, COLOR_BG);
+
+  // Big player indicator
+  uint16_t pColor = (currentPlayer == 1) ? COLOR_P1 : COLOR_P2;
+  tft.setTextColor(pColor);
+  tft.setTextSize(2);
+  tft.setCursor(30, 50);
+  tft.print("PLAYER ");
+  tft.print(currentPlayer);
+
+  tft.setTextColor(COLOR_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(40, 75);
+  tft.print("YOUR TURN!");
+
+  // Arrow decoration
+  tft.fillTriangle(70, 95, 90, 85, 90, 105, pColor);
+  tft.fillTriangle(90, 95, 110, 85, 110, 105, pColor);
+}
+
+void showHitGraphic() {
+  tft.fillRect(0, 40, 160, 90, COLOR_BG);
+
+  // Big red explosion look
+  tft.fillCircle(80, 85, 40, COLOR_HIT);
+  tft.fillCircle(80, 85, 28, COLOR_YELLOW);
+  tft.fillCircle(80, 85, 16, COLOR_WHITE);
+
+  // HIT text
+  tft.setTextColor(COLOR_HIT);
+  tft.setTextSize(3);
+  tft.setCursor(32, 75);
+  tft.print("HIT!");
+
+  // Player who scored
+  tft.setTextSize(1);
+  uint16_t pColor = (currentPlayer == 1) ? COLOR_P1 : COLOR_P2;
+  tft.setTextColor(pColor);
+  tft.setCursor(50, 115);
+  tft.print("Player ");
+  tft.print(currentPlayer);
+  tft.print(" +1");
+
+  drawScoreBar();
+  drawTimerArea();
+}
+
+void showMissGraphic() {
+  tft.fillRect(0, 40, 160, 90, COLOR_BG);
+
+  // Blue splash
+  tft.fillCircle(80, 85, 40, COLOR_MISS);
+  tft.fillCircle(80, 85, 26, 0x02FF);  // lighter blue
+  tft.fillCircle(80, 85, 14, COLOR_WHITE);
+
+  // MISS text
+  tft.setTextColor(COLOR_MISS);
+  tft.setTextSize(3);
+  tft.setCursor(22, 75);
+  tft.print("MISS!");
+
+  tft.setTextSize(1);
+  tft.setTextColor(COLOR_WHITE);
+  tft.setCursor(45, 115);
+  tft.print("No points!");
+
+  drawScoreBar();
+  drawTimerArea();
+}
