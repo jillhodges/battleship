@@ -4,7 +4,7 @@
 
 const int ROW_PINS[4] = {9, 8, 7, 6};
 const int COL_PINS[4] = {2, 3, 4, 5};
-int h;
+
 unsigned long lastRowBreak[4] = {0, 0, 0, 0};
 unsigned long lastColBreak[4] = {0, 0, 0, 0};
 
@@ -22,24 +22,12 @@ void setup() {
 
 void loop() {
   unsigned long currentTime = millis();
-  h=4;
+
   // Update break timestamps for all rows and columns
   for (int i = 0; i < 4; i++) {
-    //if (digitalRead(COL_PINS[i]) == LOW) lastColBreak[i] = currentTime;
-    if (digitalRead(ROW_PINS[i]) == LOW) {
-        lastRowBreak[i] = currentTime;
-
-
-      }
-      for (int j = 0; j <4; j++){
-        if (digitalRead(COL_PINS[j]) == LOW) {
-          lastColBreak[j] = currentTime;
- 
-        }
-
-      }
-
-    }
+    if (digitalRead(ROW_PINS[i]) == LOW) lastRowBreak[i] = currentTime;
+    if (digitalRead(COL_PINS[i]) == LOW) lastColBreak[i] = currentTime;
+  }
 
   // Check every row/column combination for a coincident break
   for (int r = 0; r < 4; r++) {
