@@ -29,13 +29,13 @@
 // ─── Grid Config ──────────────────────────────────────────────────────────────
 #define ROWS           4
 #define COLS           4
-#define SHIPS_PER_PLAYER 4
+#define SHIPS_PER_PLAYER 3
 #define PRESS_WINDOW   1000  // ms to group simultaneous presses
 
 // ─── Ship Definitions ─────────────────────────────────────────────────────────
 // Name and expected cell count (for display/debug only, no hard validation)
-const char* SHIP_NAMES[SHIPS_PER_PLAYER]  = { "Destroyer A", "Destroyer B", "Scout A", "Scout B" };
-const int   SHIP_SIZES[SHIPS_PER_PLAYER]  = { 2, 2, 1, 1 };
+const char* SHIP_NAMES[SHIPS_PER_PLAYER]  = { "Destroyer A", "Scout A", "Scout B" };
+const int   SHIP_SIZES[SHIPS_PER_PLAYER]  = { 2, 1, 1 };
 
 // ─── Pin Mapping ──────────────────────────────────────────────────────────────
 const int P1_PINS[ROWS][COLS] = {
