@@ -158,7 +158,7 @@ int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
 
   while (firstRow == -1) {
     // Check for cancel while waiting
-    ParsedMsg msg = receiveMsg(Serial1);
+    ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
     if (msg.valid && msg.type == MSG_CANCEL) return -1;
 
     for (int r = 0; r < ROWS; r++) {
@@ -259,7 +259,7 @@ void placeShipsForPlayer(int player,
 
     // Wait for confirm or cancel
     while (!confirmReceived && !cancelReceived) {
-      ParsedMsg msg = receiveMsg(Serial1);
+    ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
       if (msg.valid) {
         if (msg.type == MSG_CONFIRM) confirmReceived = true;
         if (msg.type == MSG_CANCEL)  cancelReceived  = true;
@@ -390,7 +390,7 @@ void watchBeamBreak() {
 // ─── ESP32 SERIAL HANDLER ─────────────────────────────────────────────────────
 
 void handleESP32Serial() {
-  ParsedMsg msg = receiveMsg(Serial1);
+  ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
   if (!msg.valid) return;
 
   switch (msg.type) {
