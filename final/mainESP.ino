@@ -6,7 +6,7 @@
  *   Servos:  P1 Tilt=19  P1 Pan=18  P2 Tilt=25  P2 Pan=26
  *   Mega:    ESP32 RX2=16 ← Mega TX1 | ESP32 TX2=17 → Mega RX1
  */
-
+void handlePromptCode(uint8_t code);
 #include <Bluepad32.h>
 #include <ESP32Servo.h>
 #include <Adafruit_GFX.h>
@@ -389,7 +389,10 @@ void updateTimers() {
   }
 
   if (gameState == SHOW_RESULT && now - resultShownAt > 2000) {
+  if (p1Hits < MAX_HITS && p2Hits < MAX_HITS) {
     nextTurn();
+  }
+}
   }
 }
 
