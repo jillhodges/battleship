@@ -1,6 +1,9 @@
 #include <Adafruit_NeoPixel.h>
 #include "CommProtocol.h"
 
+uint8_t serialBuf[22];
+uint8_t serialBufLen = 0;
+
 // ─── LED DEFINES ──────────────────────────────────────────────────────────────
 #define P1_ATTACKER_PIN  10
 #define P2_ATTACKER_PIN  11
