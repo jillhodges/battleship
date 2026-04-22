@@ -424,11 +424,11 @@ void handleESP32Serial() {
     case MSG_RESULT: {
       int player = msg.payload[0];
       bool isHit = msg.payload[1] == 1;
-      int row    = msg.payload[2];
-      int col    = msg.payload[3];
-      if (row > 0 && col > 0) {
-        lightResultLED(player, isHit, row, col);
-      }
+      int row = msg.payload[2];
+    int col = msg.payload[3];
+  if (row > 0 && col > 0) {
+    lightResultLED(player, isHit, row - 1, col - 1);  // convert 1-based to 0-based
+  }
       break;
     }
 
