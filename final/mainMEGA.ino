@@ -193,6 +193,7 @@ void setup() {
 
 void loop() {
   handleESP32Serial();
+  watchbeambreak();
   GridHit hit = grid.check();   // 4. call every loop()
 
   if (hit.detected) {
