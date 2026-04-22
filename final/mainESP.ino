@@ -58,7 +58,7 @@ Servo p1Tilt, p1Pan, p2Tilt, p2Pan;
 #define MEGA_TX  17
 
 // ─── Game Config ──────────────────────────────────────────────────────────────
-#define SHOT_CLOCK_SECONDS  30
+#define SHOT_CLOCK_SECONDS  15
 #define GAME_TIME_SECONDS   600   // 10 minutes
 #define MAX_HITS            4     // 4 ships per player
 
@@ -67,7 +67,6 @@ enum GameState {
   PLACEMENT,
   WAITING_START,
   AIMING,
-  FIRED,
   SHOW_RESULT,
   BETWEEN_TURNS,
   GAME_OVER
@@ -86,14 +85,11 @@ unsigned long lastGameTick  = 0;
 unsigned long lastShotTick  = 0;
 unsigned long resultShownAt = 0;
 
-// Shot fired flags - set by R2, cleared after result received or timeout
-bool shotFired      = false;
-bool waitingForHit  = false;
+
 
 // ─── Controller State ─────────────────────────────────────────────────────────
 ControllerPtr controllers[BP32_MAX_GAMEPADS];
-bool lastR2P1 = false;
-bool lastR2P2 = false;
+
 bool lastCrossP1 = false;
 bool lastCrossP2 = false;
 bool lastCircleP1 = false;
@@ -226,16 +222,7 @@ void processControllers() {
 
       // R2 fires the shot
       // Bluepad32: throttle() maps R2 (0-1023), treat >500 as pressed
-      bool r2Now = (ctl->throttle() > 500);
-
-      if (i == 0) {
-        if (r2Now && !lastR2P1 && !shotFired) { fireShot(); }
-        lastR2P1 = r2Now;
-      }
-      if (i == 1) {
-        if (r2Now && !lastR2P2 && !shotFired) { fireShot(); }
-        lastR2P2 = r2Now;
-      }
+     
     }
   }
 }
@@ -261,18 +248,6 @@ void startGame() {
   Serial2.println("GAME START");
 }
 
-void fireShot() {
-  shotFired     = true;
-  waitingForHit = true;
-  gameState     = FIRED;
-
-  // Tell Mega a shot was fired - Mega watches beam breaks
-  Serial2.print("FIRE,");
-  Serial2.println(currentPlayer);
-
-  drawFiredScreen();
-  Serial.printf("Player %d fired!\n", currentPlayer);
-}
 
 void registerResult(bool isHit, int row, int col) {
   waitingForHit = false;
@@ -407,9 +382,8 @@ void resetGame() {
 void updateTimers() {
   unsigned long now = millis();
 
-  // Game clock - counts down during AIMING and FIRED
-  if ((gameState == AIMING || gameState == FIRED) &&
-      now - lastGameTick >= 1000) {
+  // Game clock - counts down during AIMING only
+  if (gameState == AIMING && now - lastGameTick >= 1000) {
     lastGameTick = now;
     gameTimeLeft--;
     drawGameClock();
@@ -419,22 +393,16 @@ void updateTimers() {
     }
   }
 
-  // Shot clock - counts down only during AIMING
+  // Shot clock - counts down during AIMING
   if (gameState == AIMING && now - lastShotTick >= 1000) {
     lastShotTick = now;
     shotClock--;
     drawShotClock();
     if (shotClock <= 0) {
+      // Times up - counts as a miss, move to next player
       registerTimeout();
       return;
     }
-  }
-
-  // Waiting for beam break after shot fired - 5 second timeout
-  if (gameState == FIRED && waitingForHit &&
-      now - resultShownAt > 5000) {
-    registerTimeout();
-    return;
   }
 
   // Auto-advance from result screen after 2 seconds
@@ -457,11 +425,9 @@ void handleMegaSerial() {
   Serial.print("Mega: ");
   Serial.println(msg);
 
-  // Placement prompts
   if (msg.startsWith("PROMPT,")) {
     String prompt = msg.substring(7);
     drawPlacementPrompt(prompt);
-
     if (prompt == "GAME STARTING") {
       gameState = WAITING_START;
       drawWaitingStart();
@@ -469,14 +435,13 @@ void handleMegaSerial() {
     return;
   }
 
-  // Board state update (optional LCD grid display)
   if (msg.startsWith("BOARD,")) {
-    // Could draw a mini grid here if desired
     return;
   }
 
-  // Hit result from beam break
-  // Format: HIT,<row>,<col>
+  // Only process hit/miss during AIMING - ignore if not player's turn
+  if (gameState != AIMING) return;
+
   if (msg.startsWith("HIT,")) {
     int row = msg.substring(4, 5).toInt();
     int col = msg.substring(6, 7).toInt();
@@ -484,8 +449,6 @@ void handleMegaSerial() {
     return;
   }
 
-  // Miss result from beam break
-  // Format: MISS,<row>,<col>
   if (msg.startsWith("MISS,")) {
     int row = msg.substring(5, 6).toInt();
     int col = msg.substring(7, 8).toInt();
@@ -578,20 +541,9 @@ void drawPlayerTurn() {
   tft.setTextColor(0x7BEF);
   tft.setTextSize(1);
   tft.setCursor(20, 70);
-  tft.print("R2 = FIRE  L=TILT  R=PAN");
+  tft.print(L=TILT  R=PAN");
 }
 
-void drawFiredScreen() {
-  tft.fillRect(0, 33, 160, 95, C_BG);
-  tft.setTextColor(C_YELLOW);
-  tft.setTextSize(2);
-  tft.setCursor(30, 50);
-  tft.print("FIRED!");
-  tft.setTextColor(C_WHITE);
-  tft.setTextSize(1);
-  tft.setCursor(25, 75);
-  tft.print("Waiting for result...");
-}
 
 void showHitGraphic() {
   tft.fillRect(0, 33, 160, 95, C_BG);
