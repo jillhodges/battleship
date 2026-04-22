@@ -38,6 +38,10 @@ int  currentShooter  = 0;
 bool waitingForBeam  = false;
 unsigned long beamTimeout = 0;
 
+// game logic vairables
+bool gameActive = false;
+int  currentShooter = 1;  // ESP32 tells Mega whose turn it is
+
 
 
 // Convert row/col to LED start index
@@ -77,34 +81,32 @@ void clearAllLEDs() {
   p2DefendStrip.clear(); p2DefendStrip.show();
 }
 
+// Add this global near the top:
+bool gameActive = false;
+int  currentShooter = 1;  // ESP32 tells Mega whose turn it is
+
 void watchBeamBreak() {
-  if (!waitingForBeam) return;
+  if (!gameActive) return;
 
-  // Check beam break grid (reuse your BeamGrid class)
   GridHit hit = grid.check();
+  if (!hit.detected) return;
 
-  if (hit.detected) {
-    waitingForBeam = false;
+  // Check if the hit cell has a ship belonging to the defender
+  int defenderPlayer = (currentShooter == 1) ? 2 : 1;
+  bool (*defenderBoard)[4] = (defenderPlayer == 1) ? p1Ships : p2Ships;
+  bool isHit = defenderBoard[hit.row - 1][hit.col - 1];
 
-    // Was the hit cell occupied by a ship?
-    bool isHit = false;
-    int defenderPlayer = (currentShooter == 1) ? 2 : 1;
-    bool (*defenderBoard)[4] = (defenderPlayer == 1) ? p1Ships : p2Ships;
-    isHit = defenderBoard[hit.row - 1][hit.col - 1];
+  Serial1.print(isHit ? "HIT," : "MISS,");
+  Serial1.print(hit.row);
+  Serial1.print(",");
+  Serial1.println(hit.col);
 
-    // Send result to ESP32
-    Serial1.print(isHit ? "HIT," : "MISS,");
-    Serial1.print(hit.row);
-    Serial1.print(",");
-    Serial1.println(hit.col);
-
-    Serial.print(isHit ? "HIT" : "MISS");
-    Serial.print(" at R");
-    Serial.print(hit.row);
-    Serial.print("C");
-    Serial.println(hit.col);
-    return;
-  }
+  Serial.print(isHit ? "HIT" : "MISS");
+  Serial.print(" at R");
+  Serial.print(hit.row);
+  Serial.print("C");
+  Serial.println(hit.col);
+}
 
   // Timeout - no beam break detected
   if (millis() - beamTimeout > BEAM_TIMEOUT_MS) {
@@ -124,43 +126,39 @@ void handleESP32Serial() {
   Serial.print("ESP32: ");
   Serial.println(msg);
 
-  // ESP32 tells Mega a shot was fired by player X
-  // Mega now watches beam breaks and reports back
-  if (msg.startsWith("FIRE,")) {
-    int player = msg.substring(5).toInt();
-    currentShooter = player;
-    waitingForBeam = true;
-    beamTimeout    = millis();
-    Serial.print("Watching for beam break (P");
-    Serial.print(player);
-    Serial.println(" shot)...");
+  if (msg == "GAME START") {
+    gameActive = true;
+    clearAllLEDs();
+    Serial.println("Game started, watching beams.");
     return;
   }
+  if (msg.startsWith("TURN,")) {
+  currentShooter = msg.substring(5).toInt();
+  Serial.print("Current shooter: P");
+  Serial.println(currentShooter);
+  return;
+}
 
-  // ESP32 tells Mega to light LEDs for result
-  // Format: RESULT,<player>,<hit>,<row>,<col>
   if (msg.startsWith("RESULT,")) {
     int player = msg.charAt(7) - '0';
     int isHit  = msg.charAt(9) - '0';
     int row    = msg.substring(11, 12).toInt();
     int col    = msg.substring(13).toInt();
-
     if (row >= 0 && col >= 0) {
       lightResultLED(player, isHit == 1, row, col);
     }
     return;
   }
 
-  // Game over - turn off all LEDs
   if (msg == "GAME OVER") {
+    gameActive = false;
     clearAllLEDs();
     return;
   }
 
-  // Reset - clear everything
   if (msg == "RESET") {
+    gameActive = false;
     clearAllLEDs();
-    waitingForBeam = false;
     return;
   }
 }
