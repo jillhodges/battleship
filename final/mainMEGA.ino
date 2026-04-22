@@ -4,6 +4,7 @@
 uint8_t serialBuf[22];
 uint8_t serialBufLen = 0;
 bool shotReported = false;
+bool needsReplacement = false;
 
 
 // ─── LED DEFINES ──────────────────────────────────────────────────────────────
@@ -438,10 +439,11 @@ void handleESP32Serial() {
       break;
 
     case MSG_RESET:
-      gameActive = false;
-      clearAllLEDs();
-      Serial.println("Reset.");
-      break;
+    gameActive      = false;
+    needsReplacement = true;
+    clearAllLEDs();
+    break;
+
 
     default:
       Serial.print("Unknown msg: 0x");
@@ -482,5 +484,9 @@ void setup() {
 
 void loop() {
   handleESP32Serial();
+  if (needsReplacement) {
+    needsReplacement = false;
+    runPlacementPhase();
+  }
   watchBeamBreak();
 }
