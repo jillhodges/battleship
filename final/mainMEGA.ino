@@ -24,7 +24,6 @@ void loop() {
     Serial.println(hit.col);
 
     // Send to ESP32 over Serial1
-    // You can customize this however you need
     Serial1.print("HIT,");
     Serial1.print(hit.row);
     Serial1.print(",");
