@@ -3,6 +3,8 @@
 
 uint8_t serialBuf[22];
 uint8_t serialBufLen = 0;
+bool shotReported = false;
+
 
 // ─── LED DEFINES ──────────────────────────────────────────────────────────────
 #define P1_ATTACKER_PIN  10
@@ -319,12 +321,11 @@ void runPlacementPhase() {
   Serial.println("\n=== SHIP PLACEMENT PHASE ===");
 
   sendPrompt(Serial1, PROMPT_P1_PLACE);
-  placeShipsForPlayer(1, P1_PINS, p1Ships, p1ShipIndex, p1AttackStrip);
-
+  placeShipsForPlayer(1, P1_PINS, p1Ships, p1ShipIndex, p1DefendStrip);
   delay(2000);
 
   sendPrompt(Serial1, PROMPT_P2_PLACE);
-  placeShipsForPlayer(2, P2_PINS, p2Ships, p2ShipIndex, p2AttackStrip);
+  placeShipsForPlayer(2, P2_PINS, p2Ships, p2ShipIndex, p2DefendStrip);
 
   delay(1000);
   Serial.println("\n=== ALL SHIPS PLACED ===");
@@ -366,6 +367,7 @@ void clearAllLEDs() {
 
 void watchBeamBreak() {
   if (!gameActive) return;
+  if (shotReported) return;  // already reported this turn
 
   GridHit hit = beamGridCheck();
   if (!hit.detected) return;
@@ -374,11 +376,10 @@ void watchBeamBreak() {
   bool (*defenderBoard)[4] = (defenderPlayer == 1) ? p1Ships : p2Ships;
   bool isHit = defenderBoard[hit.row - 1][hit.col - 1];
 
-  if (isHit) {
-    sendHit(Serial1, hit.row, hit.col);
-  } else {
-    sendMiss(Serial1, hit.row, hit.col);
-  }
+  if (isHit) sendHit(Serial1, hit.row, hit.col);
+  else       sendMiss(Serial1, hit.row, hit.col);
+
+  shotReported = true;  // block until next turn
 
   Serial.print(isHit ? "HIT" : "MISS");
   Serial.print(" at R");
@@ -405,17 +406,19 @@ void handleESP32Serial() {
       Serial.println("CANCEL");
       break;
 
-    case MSG_GAME_START:
-      gameActive = true;
-      clearAllLEDs();
-      Serial.println("Game started.");
-      break;
+   case MSG_GAME_START:
+    gameActive   = true;
+    shotReported = false;
+    clearAllLEDs();
+    break;
 
     case MSG_TURN:
-      currentShooter = msg.payload[0];
-      Serial.print("Turn: P");
-      Serial.println(currentShooter);
+    currentShooter = msg.payload[0];
+    shotReported   = false;  // new turn, allow next shot to be reported
+    Serial.print("Turn: P");
+    Serial.println(currentShooter);
       break;
+
 
     case MSG_RESULT: {
       int player = msg.payload[0];
