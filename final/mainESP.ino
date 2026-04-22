@@ -416,45 +416,131 @@ void updateTimers() {
 //  SERIAL FROM MEGA
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include "CommProtocol.h"
+
+// ─── Send functions ───────────────────────────────────────────────────────────
+
+void sendConfirm(int player) {
+  uint8_t p[] = {(uint8_t)player};
+  sendMsg(Serial2, MSG_CONFIRM, p, 1);
+}
+
+void sendCancel(int player) {
+  uint8_t p[] = {(uint8_t)player};
+  sendMsg(Serial2, MSG_CANCEL, p, 1);
+}
+
+void sendGameStart() {
+  sendMsgEmpty(Serial2, MSG_GAME_START);
+}
+
+void sendTurn(int player) {
+  uint8_t p[] = {(uint8_t)player};
+  sendMsg(Serial2, MSG_TURN, p, 1);
+}
+
+void sendResult(int player, bool isHit, int row, int col) {
+  uint8_t p[] = {
+    (uint8_t)player,
+    (uint8_t)(isHit ? 1 : 0),
+    (uint8_t)row,
+    (uint8_t)col
+  };
+  sendMsg(Serial2, MSG_RESULT, p, 4);
+}
+
+void sendGameOver() {
+  sendMsgEmpty(Serial2, MSG_GAME_OVER);
+}
+
+void sendReset() {
+  sendMsgEmpty(Serial2, MSG_RESET);
+}
+
+// ─── Receive handler ──────────────────────────────────────────────────────────
+
 void handleMegaSerial() {
-  if (!Serial2.available()) return;
+  ParsedMsg msg = receiveMsg(Serial2);
+  if (!msg.valid) return;
 
-  String msg = Serial2.readStringUntil('\n');
-  msg.trim();
-  msg.toUpperCase();
+  switch (msg.type) {
 
-  Serial.print("Mega: ");
-  Serial.println(msg);
+    case MSG_HIT: {
+      int row = msg.payload[0];
+      int col = msg.payload[1];
+      registerResult(true, row, col);
+      Serial.print("HIT R");
+      Serial.print(row);
+      Serial.print("C");
+      Serial.println(col);
+      break;
+    }
 
-  if (msg.startsWith("PROMPT,")) {
-    String prompt = msg.substring(7);
-    drawPlacementPrompt(prompt);
-    if (prompt == "GAME STARTING") {
+    case MSG_MISS: {
+      int row = msg.payload[0];
+      int col = msg.payload[1];
+      registerResult(false, row, col);
+      Serial.print("MISS R");
+      Serial.print(row);
+      Serial.print("C");
+      Serial.println(col);
+      break;
+    }
+
+    case MSG_PROMPT: {
+      uint8_t promptCode = msg.payload[0];
+      handlePromptCode(promptCode);
+      break;
+    }
+
+    case MSG_BOARD:
+      // Optional: use board state for LCD display
+      break;
+
+    default:
+      Serial.print("Unknown msg: 0x");
+      Serial.println(msg.type, HEX);
+      break;
+  }
+}
+
+// ─── Prompt code handler (replaces drawPlacementPrompt string version) ────────
+
+void handlePromptCode(uint8_t code) {
+  switch (code) {
+    case PROMPT_P1_PLACE:
+      drawPlacementPrompt("P1 PLACE SHIPS");
+      break;
+    case PROMPT_P2_PLACE:
+      drawPlacementPrompt("P2 PLACE SHIPS");
+      break;
+    case PROMPT_P1_CONFIRM:
+      drawPlacementPrompt("P1 X=OK  O=CANCEL");
+      break;
+    case PROMPT_P2_CONFIRM:
+      drawPlacementPrompt("P2 X=OK  O=CANCEL");
+      break;
+    case PROMPT_P1_CANCELLED:
+      drawPlacementPrompt("P1 CANCELLED");
+      break;
+    case PROMPT_P2_CANCELLED:
+      drawPlacementPrompt("P2 CANCELLED");
+      break;
+    case PROMPT_P1_DONE:
+      drawPlacementPrompt("P1 ALL PLACED");
+      break;
+    case PROMPT_P2_DONE:
+      drawPlacementPrompt("P2 ALL PLACED");
+      break;
+    case PROMPT_GAME_STARTING:
       gameState = WAITING_START;
       drawWaitingStart();
-    }
-    return;
-  }
-
-  if (msg.startsWith("BOARD,")) {
-    return;
-  }
-
-  // Only process hit/miss during AIMING - ignore if not player's turn
-  if (gameState != AIMING) return;
-
-  if (msg.startsWith("HIT,")) {
-    int row = msg.substring(4, 5).toInt();
-    int col = msg.substring(6, 7).toInt();
-    registerResult(true, row, col);
-    return;
-  }
-
-  if (msg.startsWith("MISS,")) {
-    int row = msg.substring(5, 6).toInt();
-    int col = msg.substring(7, 8).toInt();
-    registerResult(false, row, col);
-    return;
+      break;
+    case PROMPT_CELL_TAKEN:
+      drawPlacementPrompt("CELL TAKEN!");
+      break;
+    default:
+      break;
   }
 }
 
