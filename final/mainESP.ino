@@ -246,6 +246,8 @@ void startGame() {
   drawHUD();
   Serial.println("Game started!");
   Serial2.println("GAME START");
+  Serial2.print("TURN,");
+  Serial2.println(currentPlayer);
 }
 
 
@@ -303,15 +305,14 @@ void nextTurn() {
   currentPlayer = (currentPlayer == 1) ? 2 : 1;
   shotClock     = SHOT_CLOCK_SECONDS;
   lastShotTick  = millis();
-  shotFired     = false;
-  waitingForHit = false;
   gameState     = AIMING;
-
-  // Centre the now-active player's servos
   centreServos(currentPlayer - 1);
 
+  // Tell Mega whose turn it is now
+  Serial2.print("TURN,");
+  Serial2.println(currentPlayer);
+
   drawHUD();
-  Serial.printf("Player %d's turn.\n", currentPlayer);
 }
 
 void endGame(int winner, bool timeUp) {
