@@ -10,7 +10,7 @@ TESTED:
 - beam breaks (no shift registers) - UPDATE CODE TO PULL FIRST READING, NOT ALL ROWS
 - PS4 controller connected to ESP32 
 - PS4 controller + Servos + ESP32
-- ESP32 and Mega Comms - UPDATE: where is voltage divider circuit? 
+- ESP32 and Mega Comms - UPDATE: where is voltage divider circuit? UPDATE: found, needs to be added to defender board that holds esp32
 - LCDs (see code for wiring information)
 
 TO BE TESTED: 
