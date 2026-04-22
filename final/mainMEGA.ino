@@ -22,19 +22,23 @@ BeamGrid grid;           // 2. create the object, global scope
 #define P1_DEFENDER_PIN  12
 #define P2_DEFENDER_PIN  13
 
+// LEDS
 #define LEDS_PER_CELL    7
 #define TOTAL_LEDS       (16 * LEDS_PER_CELL)  // 112
-#define BEAM_TIMEOUT_MS  5000  // 5 seconds to detect beam break after shot
-
+#define strip_RED   0xFF0000
+#define strip_BLUE  0x0000FF
 Adafruit_NeoPixel p1AttackStrip(TOTAL_LEDS, P1_ATTACKER_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel p2AttackStrip(TOTAL_LEDS, P2_ATTACKER_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel p1DefendStrip(TOTAL_LEDS, P1_DEFENDER_PIN, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel p2DefendStrip(TOTAL_LEDS, P2_DEFENDER_PIN, NEO_GRB + NEO_KHZ800);
 
-// Beam break state
+//BEAM BREAK
+#define BEAM_TIMEOUT_MS  5000  // 5 seconds to detect beam break after shot
 int  currentShooter  = 0;
 bool waitingForBeam  = false;
 unsigned long beamTimeout = 0;
+
+
 
 // Convert row/col to LED start index
 int cellToLED(int row, int col) {
@@ -64,9 +68,7 @@ void lightResultLED(int shootingPlayer, bool isHit, int row, int col) {
   }
 }
 
-// Define colors (NeoPixel uses 32-bit GRB)
-#define strip_RED   0xFF0000
-#define strip_BLUE  0x0000FF
+
 
 void clearAllLEDs() {
   p1AttackStrip.clear(); p1AttackStrip.show();
@@ -96,7 +98,11 @@ void watchBeamBreak() {
     Serial1.print(",");
     Serial1.println(hit.col);
 
-    Serial.printf("%s at R%dC%d\n", isHit ? "HIT" : "MISS", hit.row, hit.col);
+    Serial.print(isHit ? "HIT" : "MISS");
+    Serial.print(" at R");
+    Serial.print(hit.row);
+    Serial.print("C");
+    Serial.println(hit.col);
     return;
   }
 
@@ -125,7 +131,9 @@ void handleESP32Serial() {
     currentShooter = player;
     waitingForBeam = true;
     beamTimeout    = millis();
-    Serial.printf("Watching for beam break (P%d shot)...\n", player);
+    Serial.print("Watching for beam break (P");
+    Serial.print(player);
+    Serial.println(" shot)...");
     return;
   }
 
@@ -188,19 +196,6 @@ p2DefendStrip.begin();  p2DefendStrip.setBrightness(80);  p2DefendStrip.clear();
 
 void loop() {
   handleESP32Serial();
-  watchbeambreak();
-  GridHit hit = grid.check();   // 4. call every loop()
-
-  if (hit.detected) {
-    Serial.print("INTERSECTION DETECTED: Row ");
-    Serial.print(hit.row);
-    Serial.print(", Column ");
-    Serial.println(hit.col);
-
-    // Send to ESP32 over Serial1
-    Serial1.print("HIT,");
-    Serial1.print(hit.row);
-    Serial1.print(",");
-    Serial1.println(hit.col);
-  }
+  watchBeamBreak();
+  
 }
