@@ -1,6 +1,6 @@
 // ─── INCLUDES ─────────────────────────────────────────────────────────────────
 #include <Adafruit_NeoPixel.h>
-
+#include "CommProtocol.h"
 // ─── LED DEFINES ──────────────────────────────────────────────────────────────
 #define P1_ATTACKER_PIN  10
 #define P2_ATTACKER_PIN  11
@@ -136,19 +136,93 @@ void flashPlacementCells(Adafruit_NeoPixel &strip, bool cells[ROWS][COLS],
 
 // ── Placement serial helpers ──────────────────────────────────────────────────
 
-void sendPlacementPrompt(const char* msg) {
-  Serial1.print("PROMPT,");
-  Serial1.println(msg);
+#include "CommProtocol.h"
+
+// ─── Send functions ───────────────────────────────────────────────────────────
+
+void sendHit(int row, int col) {
+  uint8_t p[] = {(uint8_t)row, (uint8_t)col};
+  sendMsg(Serial1, MSG_HIT, p, 2);
 }
 
-void sendBoardToESP32(int player, bool ships[ROWS][COLS]) {
-  Serial1.print("BOARD,");
-  Serial1.print(player);
-  Serial1.print(",");
+void sendMiss(int row, int col) {
+  uint8_t p[] = {(uint8_t)row, (uint8_t)col};
+  sendMsg(Serial1, MSG_MISS, p, 2);
+}
+
+void sendPrompt(uint8_t promptCode) {
+  uint8_t p[] = {promptCode};
+  sendMsg(Serial1, MSG_PROMPT, p, 1);
+}
+
+void sendBoard(int player, bool ships[ROWS][COLS]) {
+  uint8_t p[17];
+  p[0] = (uint8_t)player;
+  int idx = 1;
   for (int r = 0; r < ROWS; r++)
     for (int c = 0; c < COLS; c++)
-      Serial1.print(ships[r][c] ? "1" : "0");
-  Serial1.println();
+      p[idx++] = ships[r][c] ? 1 : 0;
+  sendMsg(Serial1, MSG_BOARD, p, 17);
+}
+
+// ─── Receive handler ──────────────────────────────────────────────────────────
+
+void handleESP32Serial() {
+  ParsedMsg msg = receiveMsg(Serial1);
+  if (!msg.valid) return;
+
+  switch (msg.type) {
+
+    case MSG_CONFIRM:
+      confirmReceived = true;
+      Serial.println("CONFIRM received");
+      break;
+
+    case MSG_CANCEL:
+      cancelReceived = true;
+      Serial.println("CANCEL received");
+      break;
+
+    case MSG_GAME_START:
+      gameActive = true;
+      clearAllLEDs();
+      Serial.println("Game started.");
+      break;
+
+    case MSG_TURN:
+      currentShooter = msg.payload[0];
+      Serial.print("Turn: P");
+      Serial.println(currentShooter);
+      break;
+
+    case MSG_RESULT: {
+      int player = msg.payload[0];
+      bool isHit = msg.payload[1] == 1;
+      int row    = msg.payload[2];
+      int col    = msg.payload[3];
+      if (row > 0 && col > 0) {
+        lightResultLED(player, isHit, row, col);
+      }
+      break;
+    }
+
+    case MSG_GAME_OVER:
+      gameActive = false;
+      clearAllLEDs();
+      Serial.println("Game over.");
+      break;
+
+    case MSG_RESET:
+      gameActive = false;
+      clearAllLEDs();
+      Serial.println("Reset.");
+      break;
+
+    default:
+      Serial.print("Unknown msg: 0x");
+      Serial.println(msg.type, HEX);
+      break;
+  }
 }
 
 // ── Placement debug print ─────────────────────────────────────────────────────
