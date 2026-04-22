@@ -164,15 +164,10 @@ void setup() {
   grid.begin();          // beam break initialization
   
   // LED initialization
-  p1Strip.begin();
-  p1Strip.setBrightness(80);
-  p1Strip.clear();
-  p1Strip.show();
-
-  p2Strip.begin();
-  p2Strip.setBrightness(80);
-  p2Strip.clear();
-  p2Strip.show();
+p1AttackStrip.begin();  p1AttackStrip.setBrightness(80);  p1AttackStrip.clear();  p1AttackStrip.show();
+p2AttackStrip.begin();  p2AttackStrip.setBrightness(80);  p2AttackStrip.clear();  p2AttackStrip.show();
+p1DefendStrip.begin();  p1DefendStrip.setBrightness(80);  p1DefendStrip.clear();  p1DefendStrip.show();
+p2DefendStrip.begin();  p2DefendStrip.setBrightness(80);  p2DefendStrip.clear();  p2DefendStrip.show();
 
   //defender board placement time
   // Microswitch pins - P1 board
