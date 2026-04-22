@@ -21,6 +21,7 @@ bool gameActive     = false;
 int  currentShooter = 1;
 
 // ─── BEAM GRID FUNCTIONS ──────────────────────────────────────────────────────
+// ─── BEAM GRID ────────────────────────────────────────────────────────────────
 // Pins 2-9: beam breaks (4 row + 4 col)
 
 const int BEAM_ROW_PINS[4] = {9, 8, 7, 6};
