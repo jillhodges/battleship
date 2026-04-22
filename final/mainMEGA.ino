@@ -13,7 +13,100 @@
 // ALL OBJECTS:
 BeamGrid grid;           // 2. create the object, global scope
 
-// Add to your existing handleESP32Serial() or loop():
+#include <Adafruit_NeoPixel.h>
+
+// Attacker strips (show where shots landed from shooter's perspective)
+#define P1_ATTACKER_PIN  10
+#define P2_ATTACKER_PIN  11
+// Defender strips (show hits/misses on defender's board)
+#define P1_DEFENDER_PIN  12
+#define P2_DEFENDER_PIN  13
+
+#define LEDS_PER_CELL    7
+#define TOTAL_LEDS       (16 * LEDS_PER_CELL)  // 112
+#define BEAM_TIMEOUT_MS  5000  // 5 seconds to detect beam break after shot
+
+Adafruit_NeoPixel p1AttackStrip(TOTAL_LEDS, P1_ATTACKER_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel p2AttackStrip(TOTAL_LEDS, P2_ATTACKER_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel p1DefendStrip(TOTAL_LEDS, P1_DEFENDER_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel p2DefendStrip(TOTAL_LEDS, P2_DEFENDER_PIN, NEO_GRB + NEO_KHZ800);
+
+// Beam break state
+int  currentShooter  = 0;
+bool waitingForBeam  = false;
+unsigned long beamTimeout = 0;
+
+// Convert row/col to LED start index
+int cellToLED(int row, int col) {
+  return (row * 4 + col) * LEDS_PER_CELL;
+}
+
+// Light a cell on a strip
+void setStripCell(Adafruit_NeoPixel &strip, int row, int col, uint32_t color) {
+  int start = cellToLED(row, col);
+  for (int i = 0; i < LEDS_PER_CELL; i++)
+    strip.setPixelColor(start + i, color);
+  strip.show();
+}
+
+// Light result LEDs on both attacker and defender strips
+void lightResultLED(int shootingPlayer, bool isHit, int row, int col) {
+  uint32_t color = isHit ? strip_RED : strip_BLUE;
+
+  if (shootingPlayer == 1) {
+    // P1 shot: light P1 attacker strip + P2 defender strip
+    setStripCell(p1AttackStrip, row, col, color);
+    setStripCell(p2DefendStrip, row, col, color);
+  } else {
+    // P2 shot: light P2 attacker strip + P1 defender strip
+    setStripCell(p2AttackStrip, row, col, color);
+    setStripCell(p1DefendStrip, row, col, color);
+  }
+}
+
+// Define colors (NeoPixel uses 32-bit GRB)
+#define strip_RED   0xFF0000
+#define strip_BLUE  0x0000FF
+
+void clearAllLEDs() {
+  p1AttackStrip.clear(); p1AttackStrip.show();
+  p2AttackStrip.clear(); p2AttackStrip.show();
+  p1DefendStrip.clear(); p1DefendStrip.show();
+  p2DefendStrip.clear(); p2DefendStrip.show();
+}
+
+void watchBeamBreak() {
+  if (!waitingForBeam) return;
+
+  // Check beam break grid (reuse your BeamGrid class)
+  GridHit hit = grid.check();
+
+  if (hit.detected) {
+    waitingForBeam = false;
+
+    // Was the hit cell occupied by a ship?
+    bool isHit = false;
+    int defenderPlayer = (currentShooter == 1) ? 2 : 1;
+    bool (*defenderBoard)[4] = (defenderPlayer == 1) ? p1Ships : p2Ships;
+    isHit = defenderBoard[hit.row - 1][hit.col - 1];
+
+    // Send result to ESP32
+    Serial1.print(isHit ? "HIT," : "MISS,");
+    Serial1.print(hit.row);
+    Serial1.print(",");
+    Serial1.println(hit.col);
+
+    Serial.printf("%s at R%dC%d\n", isHit ? "HIT" : "MISS", hit.row, hit.col);
+    return;
+  }
+
+  // Timeout - no beam break detected
+  if (millis() - beamTimeout > BEAM_TIMEOUT_MS) {
+    waitingForBeam = false;
+    Serial1.println("MISS,-1,-1");
+    Serial.println("Beam timeout - automatic miss.");
+  }
+}
 
 void handleESP32Serial() {
   if (!Serial1.available()) return;
@@ -99,6 +192,7 @@ void setup() {
 }
 
 void loop() {
+  handleESP32Serial();
   GridHit hit = grid.check();   // 4. call every loop()
 
   if (hit.detected) {
