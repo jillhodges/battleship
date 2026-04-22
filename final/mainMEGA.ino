@@ -1,6 +1,6 @@
-// ─── INCLUDES ─────────────────────────────────────────────────────────────────
 #include <Adafruit_NeoPixel.h>
 #include "CommProtocol.h"
+
 // ─── LED DEFINES ──────────────────────────────────────────────────────────────
 #define P1_ATTACKER_PIN  10
 #define P2_ATTACKER_PIN  11
@@ -20,10 +20,7 @@ Adafruit_NeoPixel p2DefendStrip(TOTAL_LEDS, P2_DEFENDER_PIN, NEO_GRB + NEO_KHZ80
 bool gameActive     = false;
 int  currentShooter = 1;
 
-// ─── BEAM GRID FUNCTIONS ──────────────────────────────────────────────────────
 // ─── BEAM GRID ────────────────────────────────────────────────────────────────
-// Pins 2-9: beam breaks (4 row + 4 col)
-
 const int BEAM_ROW_PINS[4] = {9, 8, 7, 6};
 const int BEAM_COL_PINS[4] = {2, 3, 4, 5};
 const int BEAM_WINDOW = 1000;
@@ -33,8 +30,8 @@ unsigned long lastBeamColBreak[4] = {0, 0, 0, 0};
 
 struct GridHit {
   bool detected;
-  int row;  // 1-4
-  int col;  // 1-4
+  int row;
+  int col;
 };
 
 void beamGridBegin() {
@@ -72,18 +69,17 @@ GridHit beamGridCheck() {
   return result;
 }
 
-// ─── SHIP PLACEMENT FUNCTIONS ─────────────────────────────────────────────────
 // ─── SHIP PLACEMENT ───────────────────────────────────────────────────────────
-
 #define ROWS             4
 #define COLS             4
 #define SHIPS_PER_PLAYER 4
 #define PRESS_WINDOW     1000
 
-const char* SHIP_NAMES[SHIPS_PER_PLAYER] = { "Destroyer A", "Destroyer B", "Scout A", "Scout B" };
-const int   SHIP_SIZES[SHIPS_PER_PLAYER] = { 2, 2, 1, 1 };
+const char* SHIP_NAMES[SHIPS_PER_PLAYER] = {
+  "Destroyer A", "Destroyer B", "Scout A", "Scout B"
+};
+const int SHIP_SIZES[SHIPS_PER_PLAYER] = {2, 2, 1, 1};
 
-// Pin mapping
 const int P1_PINS[ROWS][COLS] = {
   {22, 23, 24, 25},
   {26, 27, 28, 29},
@@ -97,24 +93,18 @@ const int P2_PINS[ROWS][COLS] = {
   {50, 51, 52, 53}
 };
 
-// Ship state arrays - used by watchBeamBreak() during gameplay
-bool p1Ships[ROWS][COLS] = {};
-bool p2Ships[ROWS][COLS] = {};
-int  p1ShipIndex[ROWS][COLS];
-int  p2ShipIndex[ROWS][COLS];
+bool p1Ships[ROWS][COLS]     = {};
+bool p2Ships[ROWS][COLS]     = {};
+int  p1ShipIndex[ROWS][COLS] = {};
+int  p2ShipIndex[ROWS][COLS] = {};
 
-// Placement confirm/cancel flags set by handleESP32Serial()
 bool confirmReceived = false;
 bool cancelReceived  = false;
 
-// ── LED helpers for placement ─────────────────────────────────────────────────
-
-int placementCellToLED(int row, int col) {
-  return (row * COLS + col) * LEDS_PER_CELL;
-}
+// ── Placement LED helpers ─────────────────────────────────────────────────────
 
 void setPlacementCell(Adafruit_NeoPixel &strip, int row, int col, uint32_t color) {
-  int start = placementCellToLED(row, col);
+  int start = (row * COLS + col) * LEDS_PER_CELL;
   for (int i = 0; i < LEDS_PER_CELL; i++)
     strip.setPixelColor(start + i, color);
   strip.show();
@@ -134,98 +124,7 @@ void flashPlacementCells(Adafruit_NeoPixel &strip, bool cells[ROWS][COLS],
   }
 }
 
-// ── Placement serial helpers ──────────────────────────────────────────────────
-
-#include "CommProtocol.h"
-
-// ─── Send functions ───────────────────────────────────────────────────────────
-
-void sendHit(int row, int col) {
-  uint8_t p[] = {(uint8_t)row, (uint8_t)col};
-  sendMsg(Serial1, MSG_HIT, p, 2);
-}
-
-void sendMiss(int row, int col) {
-  uint8_t p[] = {(uint8_t)row, (uint8_t)col};
-  sendMsg(Serial1, MSG_MISS, p, 2);
-}
-
-void sendPrompt(uint8_t promptCode) {
-  uint8_t p[] = {promptCode};
-  sendMsg(Serial1, MSG_PROMPT, p, 1);
-}
-
-void sendBoard(int player, bool ships[ROWS][COLS]) {
-  uint8_t p[17];
-  p[0] = (uint8_t)player;
-  int idx = 1;
-  for (int r = 0; r < ROWS; r++)
-    for (int c = 0; c < COLS; c++)
-      p[idx++] = ships[r][c] ? 1 : 0;
-  sendMsg(Serial1, MSG_BOARD, p, 17);
-}
-
-// ─── Receive handler ──────────────────────────────────────────────────────────
-
-void handleESP32Serial() {
-  ParsedMsg msg = receiveMsg(Serial1);
-  if (!msg.valid) return;
-
-  switch (msg.type) {
-
-    case MSG_CONFIRM:
-      confirmReceived = true;
-      Serial.println("CONFIRM received");
-      break;
-
-    case MSG_CANCEL:
-      cancelReceived = true;
-      Serial.println("CANCEL received");
-      break;
-
-    case MSG_GAME_START:
-      gameActive = true;
-      clearAllLEDs();
-      Serial.println("Game started.");
-      break;
-
-    case MSG_TURN:
-      currentShooter = msg.payload[0];
-      Serial.print("Turn: P");
-      Serial.println(currentShooter);
-      break;
-
-    case MSG_RESULT: {
-      int player = msg.payload[0];
-      bool isHit = msg.payload[1] == 1;
-      int row    = msg.payload[2];
-      int col    = msg.payload[3];
-      if (row > 0 && col > 0) {
-        lightResultLED(player, isHit, row, col);
-      }
-      break;
-    }
-
-    case MSG_GAME_OVER:
-      gameActive = false;
-      clearAllLEDs();
-      Serial.println("Game over.");
-      break;
-
-    case MSG_RESET:
-      gameActive = false;
-      clearAllLEDs();
-      Serial.println("Reset.");
-      break;
-
-    default:
-      Serial.print("Unknown msg: 0x");
-      Serial.println(msg.type, HEX);
-      break;
-  }
-}
-
-// ── Placement debug print ─────────────────────────────────────────────────────
+// ── Placement debug ───────────────────────────────────────────────────────────
 
 void debugPrintBoard(const char* playerName, bool ships[ROWS][COLS]) {
   Serial.print("\n--- ");
@@ -243,7 +142,7 @@ void debugPrintBoard(const char* playerName, bool ships[ROWS][COLS]) {
   Serial.println();
 }
 
-// ── Read microswitches for one board ─────────────────────────────────────────
+// ── Read microswitches ────────────────────────────────────────────────────────
 
 int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
                       bool pendingCells[ROWS][COLS]) {
@@ -255,13 +154,10 @@ int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
   int firstRow = -1, firstCol = -1;
 
   while (firstRow == -1) {
-    // Check for cancel from ESP32 while waiting
-    if (Serial1.available()) {
-      String msg = Serial1.readStringUntil('\n');
-      msg.trim();
-      msg.toUpperCase();
-      if (msg == "CANCEL") return -1;
-    }
+    // Check for cancel while waiting
+    ParsedMsg msg = receiveMsg(Serial1);
+    if (msg.valid && msg.type == MSG_CANCEL) return -1;
+
     for (int r = 0; r < ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
         if (digitalRead(pins[r][c]) == HIGH && !occupied[r][c]) {
@@ -316,6 +212,7 @@ void placeShipsForPlayer(int player,
     cancelReceived  = false;
 
     int shipNum = shipsPlaced;
+
     Serial.print("\nP");
     Serial.print(player);
     Serial.print(": Place ship ");
@@ -328,9 +225,9 @@ void placeShipsForPlayer(int player,
     Serial.print(SHIP_SIZES[shipNum]);
     Serial.println(" cells)");
 
-    char promptBuf[40];
-    snprintf(promptBuf, sizeof(promptBuf), "P%d PLACE %s", player, SHIP_NAMES[shipNum]);
-    sendPlacementPrompt(promptBuf);
+    // Send prompt code to ESP32
+    uint8_t promptCode = (player == 1) ? PROMPT_P1_PLACE : PROMPT_P2_PLACE;
+    sendPrompt(Serial1, promptCode);
 
     bool pendingCells[ROWS][COLS] = {};
     int count = readShipPlacement(pins, ships, pendingCells);
@@ -339,7 +236,8 @@ void placeShipsForPlayer(int player,
       for (int r = 0; r < ROWS; r++)
         for (int c = 0; c < COLS; c++)
           if (pendingCells[r][c]) setPlacementCell(strip, r, c, 0x000000);
-      sendPlacementPrompt("CANCELLED TRY AGAIN");
+      uint8_t cc = (player == 1) ? PROMPT_P1_CANCELLED : PROMPT_P2_CANCELLED;
+      sendPrompt(Serial1, cc);
       Serial.println("Cancelled, try again.");
       continue;
     }
@@ -352,19 +250,16 @@ void placeShipsForPlayer(int player,
     Serial.print("Cells lit: ");
     Serial.println(count);
 
-    char confirmBuf[40];
-    snprintf(confirmBuf, sizeof(confirmBuf), "P%d X=CONFIRM O=CANCEL", player);
-    sendPlacementPrompt(confirmBuf);
-    Serial.println("Waiting for confirm (X) or cancel (O)...");
+    uint8_t cp = (player == 1) ? PROMPT_P1_CONFIRM : PROMPT_P2_CONFIRM;
+    sendPrompt(Serial1, cp);
+    Serial.println("Waiting for X or O...");
 
-    // Wait for response - read serial here since we're blocking
+    // Wait for confirm or cancel
     while (!confirmReceived && !cancelReceived) {
-      if (Serial1.available()) {
-        String msg = Serial1.readStringUntil('\n');
-        msg.trim();
-        msg.toUpperCase();
-        if (msg == "CONFIRM") confirmReceived = true;
-        if (msg == "CANCEL")  cancelReceived  = true;
+      ParsedMsg msg = receiveMsg(Serial1);
+      if (msg.valid) {
+        if (msg.type == MSG_CONFIRM) confirmReceived = true;
+        if (msg.type == MSG_CANCEL)  cancelReceived  = true;
       }
       delay(20);
     }
@@ -373,12 +268,13 @@ void placeShipsForPlayer(int player,
       for (int r = 0; r < ROWS; r++)
         for (int c = 0; c < COLS; c++)
           if (pendingCells[r][c]) setPlacementCell(strip, r, c, 0x000000);
-      sendPlacementPrompt("CANCELLED TRY AGAIN");
+      uint8_t cc = (player == 1) ? PROMPT_P1_CANCELLED : PROMPT_P2_CANCELLED;
+      sendPrompt(Serial1, cc);
       Serial.println("Cancelled, place again.");
       continue;
     }
 
-    // Confirmed
+    // Confirmed - flash orange then set final color
     flashPlacementCells(strip, pendingCells, 0xFF8800, 2);
 
     for (int r = 0; r < ROWS; r++) {
@@ -393,7 +289,7 @@ void placeShipsForPlayer(int player,
     }
 
     shipsPlaced++;
-    sendBoardToESP32(player, ships);
+    sendBoard(Serial1, player, ships);
     debugPrintBoard(player == 1 ? "Player 1" : "Player 2", ships);
 
     Serial.print("Confirmed! ");
@@ -401,37 +297,38 @@ void placeShipsForPlayer(int player,
     Serial.println(" ships remaining.");
   }
 
-  char doneBuf[30];
-  snprintf(doneBuf, sizeof(doneBuf), "P%d ALL SHIPS PLACED", player);
-  sendPlacementPrompt(doneBuf);
+  uint8_t doneCode = (player == 1) ? PROMPT_P1_DONE : PROMPT_P2_DONE;
+  sendPrompt(Serial1, doneCode);
   Serial.print("Player ");
   Serial.print(player);
   Serial.println(": All ships placed!");
   debugPrintBoard(player == 1 ? "Player 1" : "Player 2", ships);
 }
 
-// ── Main placement entry point ────────────────────────────────────────────────
+// ── Main placement phase ──────────────────────────────────────────────────────
 
 void runPlacementPhase() {
   memset(p1ShipIndex, -1, sizeof(p1ShipIndex));
   memset(p2ShipIndex, -1, sizeof(p2ShipIndex));
+  memset(p1Ships, 0, sizeof(p1Ships));
+  memset(p2Ships, 0, sizeof(p2Ships));
 
   Serial.println("\n=== SHIP PLACEMENT PHASE ===");
 
-  sendPlacementPrompt("P1 PLACE YOUR SHIPS");
+  sendPrompt(Serial1, PROMPT_P1_PLACE);
   placeShipsForPlayer(1, P1_PINS, p1Ships, p1ShipIndex, p1AttackStrip);
 
   delay(2000);
 
-  sendPlacementPrompt("P2 PLACE YOUR SHIPS");
+  sendPrompt(Serial1, PROMPT_P2_PLACE);
   placeShipsForPlayer(2, P2_PINS, p2Ships, p2ShipIndex, p2AttackStrip);
 
   delay(1000);
-  Serial.println("\n=== ALL SHIPS PLACED - GAME STARTING ===");
-  sendPlacementPrompt("GAME STARTING");
+  Serial.println("\n=== ALL SHIPS PLACED ===");
+  sendPrompt(Serial1, PROMPT_GAME_STARTING);
 }
 
-// ─── LED GAMEPLAY FUNCTIONS ───────────────────────────────────────────────────
+// ─── LED GAMEPLAY ─────────────────────────────────────────────────────────────
 
 int cellToLED(int row, int col) {
   return (row * 4 + col) * LEDS_PER_CELL;
@@ -474,10 +371,11 @@ void watchBeamBreak() {
   bool (*defenderBoard)[4] = (defenderPlayer == 1) ? p1Ships : p2Ships;
   bool isHit = defenderBoard[hit.row - 1][hit.col - 1];
 
-  Serial1.print(isHit ? "HIT," : "MISS,");
-  Serial1.print(hit.row);
-  Serial1.print(",");
-  Serial1.println(hit.col);
+  if (isHit) {
+    sendHit(Serial1, hit.row, hit.col);
+  } else {
+    sendMiss(Serial1, hit.row, hit.col);
+  }
 
   Serial.print(isHit ? "HIT" : "MISS");
   Serial.print(" at R");
@@ -489,50 +387,60 @@ void watchBeamBreak() {
 // ─── ESP32 SERIAL HANDLER ─────────────────────────────────────────────────────
 
 void handleESP32Serial() {
-  if (!Serial1.available()) return;
+  ParsedMsg msg = receiveMsg(Serial1);
+  if (!msg.valid) return;
 
-  String msg = Serial1.readStringUntil('\n');
-  msg.trim();
-  msg.toUpperCase();
+  switch (msg.type) {
 
-  Serial.print("ESP32: ");
-  Serial.println(msg);
+    case MSG_CONFIRM:
+      confirmReceived = true;
+      Serial.println("CONFIRM");
+      break;
 
-  if (msg == "GAME START") {
-    gameActive = true;
-    clearAllLEDs();
-    Serial.println("Game started, watching beams.");
-    return;
-  }
+    case MSG_CANCEL:
+      cancelReceived = true;
+      Serial.println("CANCEL");
+      break;
 
-  if (msg.startsWith("TURN,")) {
-    currentShooter = msg.substring(5).toInt();
-    Serial.print("Current shooter: P");
-    Serial.println(currentShooter);
-    return;
-  }
+    case MSG_GAME_START:
+      gameActive = true;
+      clearAllLEDs();
+      Serial.println("Game started.");
+      break;
 
-  if (msg.startsWith("RESULT,")) {
-    int player = msg.charAt(7) - '0';
-    int isHit  = msg.charAt(9) - '0';
-    int row    = msg.substring(11, 12).toInt();
-    int col    = msg.substring(13).toInt();
-    if (row >= 0 && col >= 0) {
-      lightResultLED(player, isHit == 1, row, col);
+    case MSG_TURN:
+      currentShooter = msg.payload[0];
+      Serial.print("Turn: P");
+      Serial.println(currentShooter);
+      break;
+
+    case MSG_RESULT: {
+      int player = msg.payload[0];
+      bool isHit = msg.payload[1] == 1;
+      int row    = msg.payload[2];
+      int col    = msg.payload[3];
+      if (row > 0 && col > 0) {
+        lightResultLED(player, isHit, row, col);
+      }
+      break;
     }
-    return;
-  }
 
-  if (msg == "GAME OVER") {
-    gameActive = false;
-    clearAllLEDs();
-    return;
-  }
+    case MSG_GAME_OVER:
+      gameActive = false;
+      clearAllLEDs();
+      Serial.println("Game over.");
+      break;
 
-  if (msg == "RESET") {
-    gameActive = false;
-    clearAllLEDs();
-    return;
+    case MSG_RESET:
+      gameActive = false;
+      clearAllLEDs();
+      Serial.println("Reset.");
+      break;
+
+    default:
+      Serial.print("Unknown msg: 0x");
+      Serial.println(msg.type, HEX);
+      break;
   }
 }
 
@@ -544,10 +452,14 @@ void setup() {
 
   beamGridBegin();
 
-  p1AttackStrip.begin(); p1AttackStrip.setBrightness(80); p1AttackStrip.clear(); p1AttackStrip.show();
-  p2AttackStrip.begin(); p2AttackStrip.setBrightness(80); p2AttackStrip.clear(); p2AttackStrip.show();
-  p1DefendStrip.begin(); p1DefendStrip.setBrightness(80); p1DefendStrip.clear(); p1DefendStrip.show();
-  p2DefendStrip.begin(); p2DefendStrip.setBrightness(80); p2DefendStrip.clear(); p2DefendStrip.show();
+  p1AttackStrip.begin(); p1AttackStrip.setBrightness(80);
+  p1AttackStrip.clear(); p1AttackStrip.show();
+  p2AttackStrip.begin(); p2AttackStrip.setBrightness(80);
+  p2AttackStrip.clear(); p2AttackStrip.show();
+  p1DefendStrip.begin(); p1DefendStrip.setBrightness(80);
+  p1DefendStrip.clear(); p1DefendStrip.show();
+  p2DefendStrip.begin(); p2DefendStrip.setBrightness(80);
+  p2DefendStrip.clear(); p2DefendStrip.show();
 
   for (int r = 0; r < ROWS; r++)
     for (int c = 0; c < COLS; c++)
