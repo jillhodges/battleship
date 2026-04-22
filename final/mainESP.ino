@@ -13,6 +13,8 @@
 #include <Adafruit_ST7735.h>
 #include <SPI.h>
 #include "CommProtocol.h"
+uint8_t esp32SerialBuf[22];
+uint8_t esp32SerialBufLen = 0;
 
 // ─── TFT ──────────────────────────────────────────────────────────────────────
 #define TFT_CS  14
@@ -396,7 +398,7 @@ void updateTimers() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 void handleMegaSerial() {
-  ParsedMsg msg = receiveMsg(Serial2);
+  ParsedMsg msg = receiveMsg(Serial2, esp32SerialBuf, esp32SerialBufLen);
   if (!msg.valid) return;
 
   switch (msg.type) {
