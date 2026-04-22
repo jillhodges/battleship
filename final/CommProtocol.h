@@ -77,19 +77,15 @@ struct ParsedMsg {
   uint8_t payload[20];
 };
 
-inline ParsedMsg receiveMsg(HardwareSerial &serial) {
-  static uint8_t buf[22];
-  static uint8_t bufLen = 0;
-
+inline ParsedMsg receiveMsg(HardwareSerial &serial, uint8_t* buf, uint8_t &bufLen) {
   ParsedMsg msg = {false, 0, 0, {}};
 
-  while (serial.available() && bufLen < sizeof(buf))
+  while (serial.available() && bufLen < 22)
     buf[bufLen++] = serial.read();
 
   if (bufLen < 2) return msg;
 
   uint8_t payLen = buf[1];
-
   if (bufLen < (uint8_t)(2 + payLen)) return msg;
 
   msg.valid = true;
@@ -101,7 +97,6 @@ inline ParsedMsg receiveMsg(HardwareSerial &serial) {
   uint8_t consumed = 2 + payLen;
   bufLen -= consumed;
   memmove(buf, buf + consumed, bufLen);
-
   return msg;
 }
 
