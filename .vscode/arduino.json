@@ -1,0 +1,6 @@
+{
+    "configuration": "PartitionScheme=default,PinNumbers=default,USBMode=default",
+    "board": "arduino:esp32:nano_nora",
+    "port": "COM23",
+    "sketch": "lib\\new_overall_testing_code.ino"
+}

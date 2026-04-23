@@ -124,6 +124,19 @@ int axisToPulse(int axisValue) {
   return map(axisValue, JOY_MIN, JOY_MAX, SERVO_MIN_US, SERVO_MAX_US);
 }
 
+/// added 
+void updateServos() {
+  if (controllers[0] != nullptr && controllers[0]->isConnected()) {
+    // 1. Left Stick Up/Down (axisY) moves Servo 1
+    int leftY = controllers[0]->axisY();
+    servo1.writeMicroseconds(axisToPulse(leftY));
+
+    // 2. Right Stick Left/Right (axisRX) moves Servo 2
+    int rightX = controllers[0]->axisRX();
+    servo2.writeMicroseconds(axisToPulse(rightX));
+  }
+}
+
 void centreServos(int playerIndex) {
   if (playerIndex == 0) {
     p1Tilt.writeMicroseconds(1500);
