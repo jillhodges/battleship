@@ -1,3 +1,12 @@
+#include <Bluepad32.h>
+#include <constants.h>
+#include <Controller.h>
+#include <ControllerData.h>
+#include <ControllerProperties.h>
+#include <Gamepad.h>
+#include <GamepadProperties.h>
+
+
 /*
  * Battleship ESP32 - DUAL SCREEN REMOTE HUB
  * Features: 
@@ -13,6 +22,12 @@
 #include <Adafruit_ST7735.h>
 #include <SPI.h>
 #include "CommProtocol.h" 
+
+// ADD THESE 3 LINES HERE:
+struct ParsedMsg; 
+void onConnectedController(ControllerPtr ctl);
+void onDisconnectedController(ControllerPtr ctl);
+//
 
 // ─── UART CONFIG (To Mega) ───────────────────────────────────────────────────
 uint8_t esp32SerialBuf[22];
