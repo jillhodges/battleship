@@ -80,7 +80,6 @@ GridHit beamGridCheck() {
 #define COLS             4
 #define SHIPS_PER_PLAYER 4
 #define PRESS_WINDOW     1000
-#define LOCK_WINDOW_MS   3000  // auto-lock after 3s of no new press
 
 const char* SHIP_NAMES[SHIPS_PER_PLAYER] = {
   "Destroyer A", "Destroyer B", "Scout A", "Scout B"
@@ -152,7 +151,7 @@ void debugPrintBoard(const char* playerName, bool ships[ROWS][COLS]) {
 // ── Read microswitches ────────────────────────────────────────────────────────
 
 int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
-                      bool pendingCells[ROWS][COLS], Adafruit_NeoPixel &strip) {
+                      bool pendingCells[ROWS][COLS]) {
   for (int r = 0; r < ROWS; r++)
     for (int c = 0; c < COLS; c++)
       pendingCells[r][c] = false;
@@ -161,6 +160,10 @@ int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
   int firstRow = -1, firstCol = -1;
 
   while (firstRow == -1) {
+    // Check for cancel while waiting
+    ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
+    if (msg.valid && msg.type == MSG_CANCEL) return -1;
+
     for (int r = 0; r < ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
         if (digitalRead(pins[r][c]) == HIGH && !occupied[r][c]) {
@@ -172,28 +175,23 @@ int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
     delay(20);
   }
 
+  unsigned long windowStart = millis();
   pendingCells[firstRow][firstCol] = true;
-  setPlacementCell(strip, firstRow, firstCol, 0x0000FF);
   int count = 1;
-  unsigned long lastPress = millis();
 
   Serial.print("First press R");
   Serial.print(firstRow);
   Serial.print("C");
-  Serial.print(firstCol);
-  Serial.println(" - lock in 3s of no new press");
+  Serial.println(firstCol);
 
-  // Keep accepting new cells until LOCK_WINDOW_MS elapses with no new press.
-  while (millis() - lastPress < LOCK_WINDOW_MS) {
+  while (millis() - windowStart < PRESS_WINDOW) {
     for (int r = 0; r < ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
         if (digitalRead(pins[r][c]) == HIGH
             && !occupied[r][c]
             && !pendingCells[r][c]) {
           pendingCells[r][c] = true;
-          setPlacementCell(strip, r, c, 0x0000FF);
           count++;
-          lastPress = millis();
           Serial.print("Additional press R");
           Serial.print(r);
           Serial.print("C");
@@ -203,8 +201,6 @@ int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
     }
     delay(20);
   }
-  Serial.print("Locked after 3s. count=");
-  Serial.println(count);
   return count;
 }
 
@@ -218,6 +214,9 @@ void placeShipsForPlayer(int player,
   int shipsPlaced = 0;
 
   while (shipsPlaced < SHIPS_PER_PLAYER) {
+    confirmReceived = false;
+    cancelReceived  = false;
+
     int shipNum = shipsPlaced;
 
     Serial.print("\nP");
@@ -230,21 +229,74 @@ void placeShipsForPlayer(int player,
     Serial.print(SHIP_NAMES[shipNum]);
     Serial.print(" (");
     Serial.print(SHIP_SIZES[shipNum]);
-    Serial.println(" cells) - locks 3s after last press");
+    Serial.println(" cells)");
 
-    // Send prompt code to ESP32 (TFT shows "P1 PLACE SHIPS" etc.)
+    // Send prompt code to ESP32
     uint8_t promptCode = (player == 1) ? PROMPT_P1_PLACE : PROMPT_P2_PLACE;
     sendPrompt(Serial1, promptCode);
 
-    // Time-based placement: cells light blue progressively, auto-locks
-    // LOCK_WINDOW_MS after the last new press. No confirm/cancel needed.
     bool pendingCells[ROWS][COLS] = {};
-    int count = readShipPlacement(pins, ships, pendingCells, strip);
+    int count = readShipPlacement(pins, ships, pendingCells);
 
-    Serial.print("Locked. Cells lit: ");
+    if (count == -1 || cancelReceived) {
+      for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+          if (pendingCells[r][c]) setPlacementCell(strip, r, c, 0x000000);
+      uint8_t cc = (player == 1) ? PROMPT_P1_CANCELLED : PROMPT_P2_CANCELLED;
+      sendPrompt(Serial1, cc);
+      Serial.println("Cancelled, try again.");
+      continue;
+    }
+
+    // Light pending cells blue
+    for (int r = 0; r < ROWS; r++)
+      for (int c = 0; c < COLS; c++)
+        if (pendingCells[r][c]) setPlacementCell(strip, r, c, 0x0000FF);
+
+    Serial.print("Cells lit: ");
     Serial.println(count);
 
-    // Locked - flash orange then set final color
+    uint8_t cp = (player == 1) ? PROMPT_P1_CONFIRM : PROMPT_P2_CONFIRM;
+    sendPrompt(Serial1, cp);
+    Serial.println("Waiting for X or O...");
+
+    // Wait for confirm or cancel
+    unsigned long lastDbg = millis();
+    while (!confirmReceived && !cancelReceived) {
+      // Debug: print any raw byte arriving on Serial1 before receiveMsg consumes it.
+      if (Serial1.available()) {
+        Serial.print("RX 0x");
+        Serial.println(Serial1.peek(), HEX);
+      }
+      ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
+      if (msg.valid) {
+        Serial.print("MSG type=0x");
+        Serial.print(msg.type, HEX);
+        Serial.print(" len=");
+        Serial.println(msg.len);
+        if (msg.type == MSG_CONFIRM) confirmReceived = true;
+        if (msg.type == MSG_CANCEL)  cancelReceived  = true;
+      }
+      // Heartbeat every 2s so we can tell the loop is alive but starved.
+      if (millis() - lastDbg > 2000) {
+        Serial.print("Still waiting... bufLen=");
+        Serial.println(serialBufLen);
+        lastDbg = millis();
+      }
+      delay(20);
+    }
+
+    if (cancelReceived) {
+      for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+          if (pendingCells[r][c]) setPlacementCell(strip, r, c, 0x000000);
+      uint8_t cc = (player == 1) ? PROMPT_P1_CANCELLED : PROMPT_P2_CANCELLED;
+      sendPrompt(Serial1, cc);
+      Serial.println("Cancelled, place again.");
+      continue;
+    }
+
+    // Confirmed - flash orange then set final color
     flashPlacementCells(strip, pendingCells, 0xFF8800, 2);
 
     for (int r = 0; r < ROWS; r++) {
