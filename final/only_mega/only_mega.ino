@@ -4,18 +4,22 @@
 // No ESP32, no Serial1, no CommProtocol — the Mega runs the entire game on its own.
 //
 // Flow:
-//   1. Placement phase: each player presses microswitches to place 4 ships
-//      (sizes 2, 2, 1, 1). The Mega auto-confirms a ship when the correct
-//      number of cells is pressed inside the press window. Wrong count =
-//      auto-cancel and retry that ship.
+//   1. Placement phase: each player presses microswitches to place 3 ships
+//      (sizes 2, 2, 1). The Mega auto-confirms a ship when the correct
+//      number of cells is pressed inside the press window AND they form a
+//      contiguous straight line. Wrong count / non-contiguous = retry.
+//      Each placed ship gets a unique ship index so individual ships can
+//      be tracked and "sunk" detected.
 //   2. When both players are done, ALL leds across all 4 strips flash a
 //      few times to announce the placement phase has ended and the game
 //      has begun.
 //   3. Gameplay: beam-break grid detects shots. On a hit, the shooter's
 //      attacker board AND the defender's board light RED at that cell.
-//      On a miss they light WHITE. Turns alternate after every shot.
-//      Game ends when one player's ships are all hit; winner's defender
-//      board flashes RED, then a new placement phase begins.
+//      On a miss they light WHITE. When every cell of a ship is hit, the
+//      ship is SUNK — its cells flash red on the defender's board and the
+//      shooter's attack board. Turns alternate after every shot. Game
+//      ends when one player's ships are all sunk; winner's defender board
+//      flashes red, then a new placement phase begins.
 
 #include <Adafruit_NeoPixel.h>
 
@@ -49,12 +53,12 @@ Adafruit_NeoPixel* ALL_STRIPS[4] = {
 };
 
 // ─── SHIP CONFIG ──────────────────────────────────────────────────────────────
-#define SHIPS_PER_PLAYER 4
+#define SHIPS_PER_PLAYER 3
 const char* SHIP_NAMES[SHIPS_PER_PLAYER] = {
-  "Destroyer A", "Destroyer B", "Scout A", "Scout B"
+  "Destroyer A", "Destroyer B", "Scout"
 };
-const int SHIP_SIZES[SHIPS_PER_PLAYER] = {2, 2, 1, 1};
-#define TOTAL_SHIP_CELLS 6  // 2+2+1+1
+const int SHIP_SIZES[SHIPS_PER_PLAYER] = {2, 2, 1};
+#define TOTAL_SHIP_CELLS 5  // 2+2+1
 
 // ─── PLACEMENT PINS ───────────────────────────────────────────────────────────
 const int P1_PINS[ROWS][COLS] = {
@@ -86,6 +90,16 @@ bool p1Ships[ROWS][COLS]    = {};
 bool p2Ships[ROWS][COLS]    = {};
 bool p1Hits[ROWS][COLS]     = {};
 bool p2Hits[ROWS][COLS]     = {};
+// Per-cell ship index: which ship sits in each cell (-1 = empty). Lets us
+// detect when every cell of a specific ship has been hit (sunk).
+int  p1ShipIdx[ROWS][COLS]  = {};
+int  p2ShipIdx[ROWS][COLS]  = {};
+int  p1ShipHits[SHIPS_PER_PLAYER] = {};
+int  p2ShipHits[SHIPS_PER_PLAYER] = {};
+bool p1ShipSunk[SHIPS_PER_PLAYER] = {};
+bool p2ShipSunk[SHIPS_PER_PLAYER] = {};
+int  p1SunkCount = 0;
+int  p2SunkCount = 0;
 int  p1HitCount = 0;
 int  p2HitCount = 0;
 int  currentShooter = 1;
@@ -142,6 +156,20 @@ void flashWholeStrip(Adafruit_NeoPixel &strip, uint32_t color, int times) {
     strip.clear(); strip.show();
     delay(120);
   }
+}
+
+// Flash every cell that belongs to ship `shipNum` on `strip`, then leave
+// those cells solid red.
+void flashSunkShip(Adafruit_NeoPixel &strip, int shipIdx[ROWS][COLS],
+                   int shipNum, int times) {
+  bool cells[ROWS][COLS] = {};
+  for (int r = 0; r < ROWS; r++)
+    for (int c = 0; c < COLS; c++)
+      if (shipIdx[r][c] == shipNum) cells[r][c] = true;
+  flashStripCells(strip, cells, COLOR_RED, times);
+  for (int r = 0; r < ROWS; r++)
+    for (int c = 0; c < COLS; c++)
+      if (cells[r][c]) setStripCell(strip, r, c, COLOR_RED);
 }
 
 // ─── BEAM GRID ────────────────────────────────────────────────────────────────
@@ -263,6 +291,7 @@ bool cellsAreContiguousLine(bool pending[ROWS][COLS], int expectedSize) {
 void placeShipsForPlayer(int player,
                          const int pins[ROWS][COLS],
                          bool ships[ROWS][COLS],
+                         int shipIdx[ROWS][COLS],
                          Adafruit_NeoPixel &strip) {
   Serial.print("\n=== Player "); Serial.print(player); Serial.println(" placement ===");
 
@@ -282,20 +311,21 @@ void placeShipsForPlayer(int player,
       Serial.print("Rejected (count="); Serial.print(count);
       Serial.println("). Re-place this ship.");
       flashStripCells(strip, pending, COLOR_RED, 3);
-      // Make sure we leave them dark.
       for (int r = 0; r < ROWS; r++)
         for (int c = 0; c < COLS; c++)
           if (pending[r][c]) setStripCell(strip, r, c, COLOR_OFF);
       continue;
     }
 
-    // Accept: flash orange, then color by ship type, commit to board.
+    // Accept: flash orange, then color by ship type, commit to board AND
+    // record which ship index occupies each cell.
     flashStripCells(strip, pending, COLOR_ORANGE, 2);
     uint32_t finalColor = (expected == 1) ? COLOR_SCOUT : COLOR_DESTROYER;
     for (int r = 0; r < ROWS; r++)
       for (int c = 0; c < COLS; c++)
         if (pending[r][c]) {
-          ships[r][c] = true;
+          ships[r][c]   = true;
+          shipIdx[r][c] = placed;
           setStripCell(strip, r, c, finalColor);
         }
     placed++;
@@ -311,15 +341,21 @@ void runPlacementPhase() {
   memset(p2Ships, 0, sizeof(p2Ships));
   memset(p1Hits,  0, sizeof(p1Hits));
   memset(p2Hits,  0, sizeof(p2Hits));
-  p1HitCount = 0; p2HitCount = 0;
+  for (int r = 0; r < ROWS; r++)
+    for (int c = 0; c < COLS; c++) { p1ShipIdx[r][c] = -1; p2ShipIdx[r][c] = -1; }
+  for (int i = 0; i < SHIPS_PER_PLAYER; i++) {
+    p1ShipHits[i] = 0; p2ShipHits[i] = 0;
+    p1ShipSunk[i] = false; p2ShipSunk[i] = false;
+  }
+  p1SunkCount = 0; p2SunkCount = 0;
+  p1HitCount = 0;  p2HitCount = 0;
   clearAllLEDs();
 
   Serial.println("\n=== SHIP PLACEMENT PHASE ===");
-  placeShipsForPlayer(1, P1_PINS, p1Ships, p1DefendStrip);
+  placeShipsForPlayer(1, P1_PINS, p1Ships, p1ShipIdx, p1DefendStrip);
   delay(800);
-  placeShipsForPlayer(2, P2_PINS, p2Ships, p2DefendStrip);
+  placeShipsForPlayer(2, P2_PINS, p2Ships, p2ShipIdx, p2DefendStrip);
 
-  // Announce placement done + game start: flash everything.
   Serial.println("\n=== ALL SHIPS PLACED — GAME START ===");
   delay(400);
   flashAllLEDs(COLOR_GREEN, 4, 180, 140);
@@ -335,8 +371,6 @@ void runPlacementPhase() {
 // ─── GAMEPLAY ─────────────────────────────────────────────────────────────────
 void lightShotResult(int shooter, bool isHit, int row, int col) {
   uint32_t color = isHit ? COLOR_RED : COLOR_WHITE;
-  // Hit/miss lights up on the SHOOTER's attack board AND the defender's board,
-  // at the same cell — a hit shows red on both, a miss shows white on both.
   if (shooter == 1) {
     setStripCell(p1AttackStrip, row, col, color);
     setStripCell(p2DefendStrip, row, col, color);
@@ -344,6 +378,20 @@ void lightShotResult(int shooter, bool isHit, int row, int col) {
     setStripCell(p2AttackStrip, row, col, color);
     setStripCell(p1DefendStrip, row, col, color);
   }
+}
+
+void announceSunk(int shooter, int defender, int shipNum) {
+  Serial.print(">>> SUNK: P"); Serial.print(defender);
+  Serial.print(" "); Serial.print(SHIP_NAMES[shipNum]); Serial.println(" <<<");
+
+  Adafruit_NeoPixel &defStrip    = (defender == 1) ? p1DefendStrip : p2DefendStrip;
+  Adafruit_NeoPixel &attackStrip = (shooter  == 1) ? p1AttackStrip : p2AttackStrip;
+  int (*defShipIdx)[COLS]        = (defender == 1) ? p1ShipIdx     : p2ShipIdx;
+
+  // Flash the sunk ship's cells on both the defender's board and the
+  // shooter's attack board, then leave them solid red.
+  flashSunkShip(defStrip,    defShipIdx, shipNum, 4);
+  flashSunkShip(attackStrip, defShipIdx, shipNum, 1);
 }
 
 void endGame(int winner) {
@@ -362,7 +410,6 @@ void endGame(int winner) {
 void watchBeamBreak() {
   if (!gameActive) return;
   if (millis() - lastShotTime < SHOT_COOLDOWN) {
-    // still cooling down; drain detections so we don't queue stale hits
     beamGridCheck();
     return;
   }
@@ -375,9 +422,13 @@ void watchBeamBreak() {
 
   bool (*defShips)[COLS] = (defender == 1) ? p1Ships : p2Ships;
   bool (*defHits)[COLS]  = (defender == 1) ? p1Hits  : p2Hits;
+  int  (*defShipIdx)[COLS] = (defender == 1) ? p1ShipIdx : p2ShipIdx;
+  int  *defShipHits      = (defender == 1) ? p1ShipHits : p2ShipHits;
+  bool *defShipSunk      = (defender == 1) ? p1ShipSunk : p2ShipSunk;
+  int  &defSunkCount     = (defender == 1) ? p1SunkCount : p2SunkCount;
+  int  &defHitCount      = (defender == 1) ? p1HitCount  : p2HitCount;
 
   if (defHits[r][c]) {
-    // already shot this cell — ignore so we don't re-trigger end conditions
     lastShotTime = millis();
     return;
   }
@@ -392,9 +443,17 @@ void watchBeamBreak() {
   Serial.print("C"); Serial.println(hit.col);
 
   if (isHit) {
-    if (defender == 1) p1HitCount++; else p2HitCount++;
-    if ((defender == 1 && p1HitCount >= TOTAL_SHIP_CELLS) ||
-        (defender == 2 && p2HitCount >= TOTAL_SHIP_CELLS)) {
+    defHitCount++;
+    int shipNum = defShipIdx[r][c];
+    if (shipNum >= 0 && shipNum < SHIPS_PER_PLAYER) {
+      defShipHits[shipNum]++;
+      if (!defShipSunk[shipNum] && defShipHits[shipNum] >= SHIP_SIZES[shipNum]) {
+        defShipSunk[shipNum] = true;
+        defSunkCount++;
+        announceSunk(currentShooter, defender, shipNum);
+      }
+    }
+    if (defSunkCount >= SHIPS_PER_PLAYER) {
       endGame(currentShooter);
       return;
     }
