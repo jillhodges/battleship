@@ -161,10 +161,12 @@ void processControllers() {
 
       if (i == 0) {
         if (crossNow  && !lastCrossP1)  {
+          Serial.println(">> P1 CROSS -> MSG_CONFIRM");
           uint8_t p[] = {1};
           sendMsg(Serial2, MSG_CONFIRM, p, 1);
         }
         if (circleNow && !lastCircleP1) {
+          Serial.println(">> P1 CIRCLE -> MSG_CANCEL");
           uint8_t p[] = {1};
           sendMsg(Serial2, MSG_CANCEL, p, 1);
         }
@@ -173,10 +175,12 @@ void processControllers() {
       }
       if (i == 1) {
         if (crossNow  && !lastCrossP2)  {
+          Serial.println(">> P2 CROSS -> MSG_CONFIRM");
           uint8_t p[] = {2};
           sendMsg(Serial2, MSG_CONFIRM, p, 1);
         }
         if (circleNow && !lastCircleP2) {
+          Serial.println(">> P2 CIRCLE -> MSG_CANCEL");
           uint8_t p[] = {2};
           sendMsg(Serial2, MSG_CANCEL, p, 1);
         }
@@ -629,6 +633,12 @@ void drawWaitingStart() {
 void setup() {
   Serial.begin(115200);
   Serial2.begin(9600, SERIAL_8N1, MEGA_RX, MEGA_TX);
+
+  // Drain any boot-time junk on the Mega link so the framing parser
+  // (no SYNC byte / checksum) doesn't lock onto a bogus payLen.
+  delay(200);
+  while (Serial2.available()) Serial2.read();
+  esp32SerialBufLen = 0;
 
   p1Tilt.attach(P1_TILT_PIN, SERVO_MIN_US, SERVO_MAX_US);
   p1Pan.attach(P1_PAN_PIN,   SERVO_MIN_US, SERVO_MAX_US);

@@ -261,11 +261,27 @@ void placeShipsForPlayer(int player,
     Serial.println("Waiting for X or O...");
 
     // Wait for confirm or cancel
+    unsigned long lastDbg = millis();
     while (!confirmReceived && !cancelReceived) {
-    ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
+      // Debug: print any raw byte arriving on Serial1 before receiveMsg consumes it.
+      if (Serial1.available()) {
+        Serial.print("RX 0x");
+        Serial.println(Serial1.peek(), HEX);
+      }
+      ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
       if (msg.valid) {
+        Serial.print("MSG type=0x");
+        Serial.print(msg.type, HEX);
+        Serial.print(" len=");
+        Serial.println(msg.len);
         if (msg.type == MSG_CONFIRM) confirmReceived = true;
         if (msg.type == MSG_CANCEL)  cancelReceived  = true;
+      }
+      // Heartbeat every 2s so we can tell the loop is alive but starved.
+      if (millis() - lastDbg > 2000) {
+        Serial.print("Still waiting... bufLen=");
+        Serial.println(serialBufLen);
+        lastDbg = millis();
       }
       delay(20);
     }
@@ -318,6 +334,10 @@ void runPlacementPhase() {
   memset(p2ShipIndex, -1, sizeof(p2ShipIndex));
   memset(p1Ships, 0, sizeof(p1Ships));
   memset(p2Ships, 0, sizeof(p2Ships));
+
+  // Flush any boot-time junk so receiveMsg doesn't desync on a bad payLen byte.
+  while (Serial1.available()) Serial1.read();
+  serialBufLen = 0;
 
   Serial.println("\n=== SHIP PLACEMENT PHASE ===");
 
