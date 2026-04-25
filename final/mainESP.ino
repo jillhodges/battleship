@@ -17,14 +17,14 @@ uint8_t esp32SerialBufLen = 0;
 void handlePromptCode(uint8_t code);
 
 // ─── TFT ──────────────────────────────────────────────────────────────────────
-#define TFT_CS  14
+#define TFT_CS  2
 #define TFT_RST 15
-#define TFT_DC  32
+#define TFT_DC  23
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
 // ─── SERVOS ───────────────────────────────────────────────────────────────────
-#define P1_TILT_PIN  19
-#define P1_PAN_PIN   18
+#define P1_TILT_PIN  14
+#define P1_PAN_PIN   13
 #define P2_TILT_PIN  25
 #define P2_PAN_PIN   26
 #define SERVO_MIN_US 900
@@ -421,9 +421,11 @@ void handleMegaSerial() {
       }
       break;
 
-    case MSG_PROMPT:
-      handlePromptCode(msg.payload[0]);
-      break;
+   case MSG_PROMPT:
+  Serial.print("PROMPT received: 0x");
+  Serial.println(msg.payload[0], HEX);
+  handlePromptCode(msg.payload[0]);
+  break;
 
     case MSG_BOARD:
       // Reserved for optional LCD grid display
@@ -439,9 +441,11 @@ void handleMegaSerial() {
 void handlePromptCode(uint8_t code) {
   switch (code) {
     case PROMPT_P1_PLACE:
-      drawPlacementPrompt("P1 PLACE SHIPS");      break;
-    case PROMPT_P2_PLACE:
-      drawPlacementPrompt("P2 PLACE SHIPS");      break;
+  drawPlacementPrompt("P1 PLACE SHIPS");
+  break;
+case PROMPT_P2_PLACE:
+  drawPlacementPrompt("P2 PLACE SHIPS");
+  break;
     case PROMPT_P1_CONFIRM:
       drawPlacementPrompt("P1 X=OK  O=CANCEL");   break;
     case PROMPT_P2_CONFIRM:
@@ -608,7 +612,7 @@ void drawPlacementPrompt(const char* prompt) {
   tft.print(prompt);
   tft.setTextColor(0x7BEF);
   tft.setCursor(5, 100);
-  tft.print("X=Confirm  O=Cancel");
+  tft.print("Place then wait 3s");  // updated hint
 }
 
 void drawWaitingStart() {
@@ -652,7 +656,6 @@ void setup() {
 
   for (int i = 0; i < BP32_MAX_GAMEPADS; i++) controllers[i] = nullptr;
   BP32.setup(&onConnectedController, &onDisconnectedController);
-  BP32.forgetBluetoothKeys();
 
   drawPlacementScreen();
   Serial.println("ESP32 ready.");
