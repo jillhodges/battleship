@@ -8,10 +8,10 @@ bool needsReplacement = false;
 
 
 // ─── LED DEFINES ──────────────────────────────────────────────────────────────
-#define P1_ATTACKER_PIN  10
-#define P2_ATTACKER_PIN  11
-#define P1_DEFENDER_PIN  12
-#define P2_DEFENDER_PIN  13
+#define P1_ATTACKER_PIN  11
+#define P2_ATTACKER_PIN  13
+#define P1_DEFENDER_PIN  10
+#define P2_DEFENDER_PIN  12
 #define LEDS_PER_CELL    7
 #define TOTAL_LEDS       (16 * LEDS_PER_CELL)
 #define strip_RED        0xFF0000
@@ -80,6 +80,7 @@ GridHit beamGridCheck() {
 #define COLS             4
 #define SHIPS_PER_PLAYER 4
 #define PRESS_WINDOW     1000
+#define LOCK_WINDOW_MS   3000  // auto-lock after 3s of no new press
 
 const char* SHIP_NAMES[SHIPS_PER_PLAYER] = {
   "Destroyer A", "Destroyer B", "Scout A", "Scout B"
@@ -110,9 +111,16 @@ bool cancelReceived  = false;
 // ── Placement LED helpers ─────────────────────────────────────────────────────
 
 void setPlacementCell(Adafruit_NeoPixel &strip, int row, int col, uint32_t color) {
-  int start = (row * COLS + col) * LEDS_PER_CELL;
-  for (int i = 0; i < LEDS_PER_CELL; i++)
+  int physicalCol;
+  if (row % 2 == 0) {
+    physicalCol = (COLS - 1) - col;
+  } else {
+    physicalCol = col;
+  }
+  int start = (row * COLS + physicalCol) * LEDS_PER_CELL;
+  for (int i = 0; i < LEDS_PER_CELL; i++) {
     strip.setPixelColor(start + i, color);
+  }
   strip.show();
 }
 
@@ -151,7 +159,7 @@ void debugPrintBoard(const char* playerName, bool ships[ROWS][COLS]) {
 // ── Read microswitches ────────────────────────────────────────────────────────
 
 int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
-                      bool pendingCells[ROWS][COLS]) {
+                      bool pendingCells[ROWS][COLS], Adafruit_NeoPixel &strip) {
   for (int r = 0; r < ROWS; r++)
     for (int c = 0; c < COLS; c++)
       pendingCells[r][c] = false;
@@ -160,10 +168,6 @@ int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
   int firstRow = -1, firstCol = -1;
 
   while (firstRow == -1) {
-    // Check for cancel while waiting
-    ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
-    if (msg.valid && msg.type == MSG_CANCEL) return -1;
-
     for (int r = 0; r < ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
         if (digitalRead(pins[r][c]) == HIGH && !occupied[r][c]) {
@@ -175,23 +179,28 @@ int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
     delay(20);
   }
 
-  unsigned long windowStart = millis();
   pendingCells[firstRow][firstCol] = true;
+  setPlacementCell(strip, firstRow, firstCol, 0x0000FF);
   int count = 1;
+  unsigned long lastPress = millis();
 
   Serial.print("First press R");
   Serial.print(firstRow);
   Serial.print("C");
-  Serial.println(firstCol);
+  Serial.print(firstCol);
+  Serial.println(" - lock in 3s of no new press");
 
-  while (millis() - windowStart < PRESS_WINDOW) {
+  // Keep accepting new cells until LOCK_WINDOW_MS elapses with no new press.
+  while (millis() - lastPress < LOCK_WINDOW_MS) {
     for (int r = 0; r < ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
         if (digitalRead(pins[r][c]) == HIGH
             && !occupied[r][c]
             && !pendingCells[r][c]) {
           pendingCells[r][c] = true;
+          setPlacementCell(strip, r, c, 0x0000FF);
           count++;
+          lastPress = millis();
           Serial.print("Additional press R");
           Serial.print(r);
           Serial.print("C");
@@ -201,6 +210,8 @@ int readShipPlacement(const int pins[ROWS][COLS], bool occupied[ROWS][COLS],
     }
     delay(20);
   }
+  Serial.print("Locked after 3s. count=");
+  Serial.println(count);
   return count;
 }
 
@@ -214,9 +225,6 @@ void placeShipsForPlayer(int player,
   int shipsPlaced = 0;
 
   while (shipsPlaced < SHIPS_PER_PLAYER) {
-    confirmReceived = false;
-    cancelReceived  = false;
-
     int shipNum = shipsPlaced;
 
     Serial.print("\nP");
@@ -229,81 +237,21 @@ void placeShipsForPlayer(int player,
     Serial.print(SHIP_NAMES[shipNum]);
     Serial.print(" (");
     Serial.print(SHIP_SIZES[shipNum]);
-    Serial.println(" cells)");
+    Serial.println(" cells) - locks 3s after last press");
 
-    // Send prompt code to ESP32
+    // Send prompt code to ESP32 (TFT shows "P1 PLACE SHIPS" etc.)
     uint8_t promptCode = (player == 1) ? PROMPT_P1_PLACE : PROMPT_P2_PLACE;
     sendPrompt(Serial1, promptCode);
 
+    // Time-based placement: cells light blue progressively, auto-locks
+    // LOCK_WINDOW_MS after the last new press. No confirm/cancel needed.
     bool pendingCells[ROWS][COLS] = {};
-    int count = readShipPlacement(pins, ships, pendingCells);
+    int count = readShipPlacement(pins, ships, pendingCells, strip);
 
-    if (count == -1 || cancelReceived) {
-      for (int r = 0; r < ROWS; r++)
-        for (int c = 0; c < COLS; c++)
-          if (pendingCells[r][c]) setPlacementCell(strip, r, c, 0x000000);
-      uint8_t cc = (player == 1) ? PROMPT_P1_CANCELLED : PROMPT_P2_CANCELLED;
-      sendPrompt(Serial1, cc);
-      Serial.println("Cancelled, try again.");
-      continue;
-    }
-
-    // Light pending cells blue
-    for (int r = 0; r < ROWS; r++)
-      for (int c = 0; c < COLS; c++)
-        if (pendingCells[r][c]) setPlacementCell(strip, r, c, 0x0000FF);
-
-    Serial.print("Cells lit: ");
+    Serial.print("Locked. Cells lit: ");
     Serial.println(count);
 
-    uint8_t cp = (player == 1) ? PROMPT_P1_CONFIRM : PROMPT_P2_CONFIRM;
-    sendPrompt(Serial1, cp);
-    Serial.println("Waiting for X or O...");
-
-    // Wait for confirm or cancel.
-    // Demo safety: auto-confirm after 30s so a dropped BT pairing or framing
-    // desync cannot permanently brick placement mid-demo.
-    const unsigned long CONFIRM_TIMEOUT_MS = 30000;
-    unsigned long waitStart = millis();
-    unsigned long lastDbg = waitStart;
-    while (!confirmReceived && !cancelReceived) {
-      if (Serial1.available()) {
-        Serial.print("RX 0x");
-        Serial.println(Serial1.peek(), HEX);
-      }
-      ParsedMsg msg = receiveMsg(Serial1, serialBuf, serialBufLen);
-      if (msg.valid) {
-        Serial.print("MSG type=0x");
-        Serial.print(msg.type, HEX);
-        Serial.print(" len=");
-        Serial.println(msg.len);
-        if (msg.type == MSG_CONFIRM) confirmReceived = true;
-        if (msg.type == MSG_CANCEL)  cancelReceived  = true;
-      }
-      if (millis() - lastDbg > 2000) {
-        Serial.print("Still waiting... bufLen=");
-        Serial.println(serialBufLen);
-        lastDbg = millis();
-      }
-      if (millis() - waitStart > CONFIRM_TIMEOUT_MS) {
-        Serial.println("CONFIRM TIMEOUT (30s) - auto-confirming so demo can proceed");
-        confirmReceived = true;
-        break;
-      }
-      delay(20);
-    }
-
-    if (cancelReceived) {
-      for (int r = 0; r < ROWS; r++)
-        for (int c = 0; c < COLS; c++)
-          if (pendingCells[r][c]) setPlacementCell(strip, r, c, 0x000000);
-      uint8_t cc = (player == 1) ? PROMPT_P1_CANCELLED : PROMPT_P2_CANCELLED;
-      sendPrompt(Serial1, cc);
-      Serial.println("Cancelled, place again.");
-      continue;
-    }
-
-    // Confirmed - flash orange then set final color
+    // Locked - flash orange then set final color
     flashPlacementCells(strip, pendingCells, 0xFF8800, 2);
 
     for (int r = 0; r < ROWS; r++) {
@@ -342,12 +290,9 @@ void runPlacementPhase() {
   memset(p1Ships, 0, sizeof(p1Ships));
   memset(p2Ships, 0, sizeof(p2Ships));
 
-  // Drain any boot-time junk on Serial1 so receiveMsg's no-SYNC framing
-  // can't lock onto a bogus payLen and stall waiting for nonexistent bytes.
+  // Flush any boot-time junk so receiveMsg doesn't desync on a bad payLen byte.
   while (Serial1.available()) Serial1.read();
   serialBufLen = 0;
-  confirmReceived = false;
-  cancelReceived  = false;
 
   Serial.println("\n=== SHIP PLACEMENT PHASE ===");
 
@@ -366,7 +311,15 @@ void runPlacementPhase() {
 // ─── LED GAMEPLAY ─────────────────────────────────────────────────────────────
 
 int cellToLED(int row, int col) {
-  return (row * 4 + col) * LEDS_PER_CELL;
+  int physicalCol;
+  if (row % 2 == 0) {
+    // Even rows: C3 is first, so flip
+    physicalCol = (COLS - 1) - col;
+  } else {
+    // Odd rows: C0 is first, normal
+    physicalCol = col;
+  }
+  return (row * COLS + physicalCol) * LEDS_PER_CELL;
 }
 
 void setStripCell(Adafruit_NeoPixel &strip, int row, int col, uint32_t color) {
@@ -456,8 +409,7 @@ void handleESP32Serial() {
       bool isHit = msg.payload[1] == 1;
       int row = msg.payload[2];
     int col = msg.payload[3];
-  if (row >= 1 && row <= ROWS && col >= 1 && col <= COLS &&
-      (player == 1 || player == 2)) {
+  if (row > 0 && col > 0) {
     lightResultLED(player, isHit, row - 1, col - 1);  // convert 1-based to 0-based
   }
       break;
@@ -514,6 +466,8 @@ void setup() {
 // ─── LOOP ─────────────────────────────────────────────────────────────────────
 
 void loop() {
+  digitalWrite(14,HIGH);
+  digitalWrite(15,HIGH);
   handleESP32Serial();
   if (needsReplacement) {
     needsReplacement = false;
