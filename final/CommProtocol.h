@@ -80,35 +80,37 @@ struct ParsedMsg {
 inline ParsedMsg receiveMsg(HardwareSerial &serial, uint8_t* buf, uint8_t &bufLen) {
   ParsedMsg msg = {false, 0, 0, {}};
 
+  // Read all available bytes into buffer
   while (serial.available() && bufLen < 22)
     buf[bufLen++] = serial.read();
 
+  // Need at least type + length bytes
   if (bufLen < 2) return msg;
 
   uint8_t payLen = buf[1];
 
-  // Defensive: if the length byte is bogus (e.g. boot junk read as buf[1]),
-  // the original (uint8_t)(2 + payLen) cast wraps for payLen >= 254 and
-  // lets a parser advance into out-of-bounds reads of buf and writes of
-  // msg.payload.  Drop one byte and try to resync on the next call.
+  // Defensive: if length byte is bogus drop one byte and resync
   if (payLen > 20) {
     bufLen--;
     memmove(buf, buf + 1, bufLen);
     return msg;
   }
 
-  // Promote to int so 2 + payLen can't wrap.
+  // Check full message has arrived
   if ((int)bufLen < 2 + (int)payLen) return msg;
 
+  // Parse full message
   msg.valid = true;
   msg.type  = buf[0];
   msg.len   = payLen;
   for (uint8_t i = 0; i < payLen; i++)
     msg.payload[i] = buf[2 + i];
 
+  // Shift buffer left by consumed bytes
   uint8_t consumed = 2 + payLen;
   bufLen -= consumed;
   memmove(buf, buf + consumed, bufLen);
+
   return msg;
 }
 
