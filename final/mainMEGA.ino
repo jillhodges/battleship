@@ -260,10 +260,13 @@ void placeShipsForPlayer(int player,
     sendPrompt(Serial1, cp);
     Serial.println("Waiting for X or O...");
 
-    // Wait for confirm or cancel
-    unsigned long lastDbg = millis();
+    // Wait for confirm or cancel.
+    // Demo safety: auto-confirm after 30s so a dropped BT pairing or framing
+    // desync cannot permanently brick placement mid-demo.
+    const unsigned long CONFIRM_TIMEOUT_MS = 30000;
+    unsigned long waitStart = millis();
+    unsigned long lastDbg = waitStart;
     while (!confirmReceived && !cancelReceived) {
-      // Debug: print any raw byte arriving on Serial1 before receiveMsg consumes it.
       if (Serial1.available()) {
         Serial.print("RX 0x");
         Serial.println(Serial1.peek(), HEX);
@@ -277,11 +280,15 @@ void placeShipsForPlayer(int player,
         if (msg.type == MSG_CONFIRM) confirmReceived = true;
         if (msg.type == MSG_CANCEL)  cancelReceived  = true;
       }
-      // Heartbeat every 2s so we can tell the loop is alive but starved.
       if (millis() - lastDbg > 2000) {
         Serial.print("Still waiting... bufLen=");
         Serial.println(serialBufLen);
         lastDbg = millis();
+      }
+      if (millis() - waitStart > CONFIRM_TIMEOUT_MS) {
+        Serial.println("CONFIRM TIMEOUT (30s) - auto-confirming so demo can proceed");
+        confirmReceived = true;
+        break;
       }
       delay(20);
     }
@@ -335,9 +342,12 @@ void runPlacementPhase() {
   memset(p1Ships, 0, sizeof(p1Ships));
   memset(p2Ships, 0, sizeof(p2Ships));
 
-  // Flush any boot-time junk so receiveMsg doesn't desync on a bad payLen byte.
+  // Drain any boot-time junk on Serial1 so receiveMsg's no-SYNC framing
+  // can't lock onto a bogus payLen and stall waiting for nonexistent bytes.
   while (Serial1.available()) Serial1.read();
   serialBufLen = 0;
+  confirmReceived = false;
+  cancelReceived  = false;
 
   Serial.println("\n=== SHIP PLACEMENT PHASE ===");
 
@@ -446,7 +456,8 @@ void handleESP32Serial() {
       bool isHit = msg.payload[1] == 1;
       int row = msg.payload[2];
     int col = msg.payload[3];
-  if (row > 0 && col > 0) {
+  if (row >= 1 && row <= ROWS && col >= 1 && col <= COLS &&
+      (player == 1 || player == 2)) {
     lightResultLED(player, isHit, row - 1, col - 1);  // convert 1-based to 0-based
   }
       break;

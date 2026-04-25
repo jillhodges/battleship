@@ -86,7 +86,19 @@ inline ParsedMsg receiveMsg(HardwareSerial &serial, uint8_t* buf, uint8_t &bufLe
   if (bufLen < 2) return msg;
 
   uint8_t payLen = buf[1];
-  if (bufLen < (uint8_t)(2 + payLen)) return msg;
+
+  // Defensive: if the length byte is bogus (e.g. boot junk read as buf[1]),
+  // the original (uint8_t)(2 + payLen) cast wraps for payLen >= 254 and
+  // lets a parser advance into out-of-bounds reads of buf and writes of
+  // msg.payload.  Drop one byte and try to resync on the next call.
+  if (payLen > 20) {
+    bufLen--;
+    memmove(buf, buf + 1, bufLen);
+    return msg;
+  }
+
+  // Promote to int so 2 + payLen can't wrap.
+  if ((int)bufLen < 2 + (int)payLen) return msg;
 
   msg.valid = true;
   msg.type  = buf[0];
